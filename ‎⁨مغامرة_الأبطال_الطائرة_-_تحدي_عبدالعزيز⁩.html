@@ -1,0 +1,2829 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>مغامرة الأبطال الطائرة - تحدي العائلة</title>
+
+  <!-- استيراد خط Cairo العربي العصري والواضح -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS للتصميم المتجاوب على الجوال والكمبيوتر -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* ==========================================================================
+       التنسيقات العامة ومنع التمرير العشوائي أثناء الطيران
+       ========================================================================== */
+    :root {
+      --font-main: 'Cairo', system-ui, -apple-system, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: var(--font-main);
+      background: linear-gradient(180deg, #0284c7 0%, #bae6fd 100%);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* السماح بالكتابة والتحديد داخل حقول الإدخال فقط */
+    input, select {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    /* أزرار مبهجة ثلاثية الأبعاد */
+    .btn-candy {
+      transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.14s ease, filter 0.14s ease;
+    }
+    .btn-candy:hover {
+      filter: brightness(1.04);
+      transform: translateY(-2px);
+    }
+    .btn-candy:active {
+      transform: translateY(3px) scale(0.98);
+    }
+
+    /* بطاقة الشخصية المختارة في وضع اللاعبين */
+    .hero-card {
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .hero-card:hover {
+      transform: translateY(-3px);
+    }
+    .hero-card.selected {
+      transform: translateY(-4px) scale(1.03);
+      box-shadow: 0 12px 24px -6px rgba(245, 158, 11, 0.45), 0 0 0 4px #fbbf24;
+      border-color: #f59e0b;
+      background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+    }
+
+    @keyframes floatSlow {
+      0%, 100% { transform: translateY(0px) rotate(-0.6deg); }
+      50% { transform: translateY(-5px) rotate(0.8deg); }
+    }
+    .animate-float {
+      animation: floatSlow 3.2s ease-in-out infinite;
+    }
+
+    @keyframes shakeInput {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+    .animate-shake {
+      animation: shakeInput 0.36s ease-in-out;
+    }
+
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(148, 163, 184, 0.15);
+      border-radius: 999px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(14, 116, 144, 0.35);
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body class="relative w-screen h-[100dvh] overflow-hidden">
+
+  <!-- ========================================================================
+       لوحة الرسم الرئيسية للعبة (HTML5 Canvas 60fps)
+       ======================================================================== -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- ========================================================================
+       شريط التحكم العلوي العائم أثناء اللعب
+       ======================================================================== -->
+  <div id="hudOverlay" class="pointer-events-none fixed top-0 inset-x-0 z-20 flex items-start justify-between p-3 sm:p-5">
+    <div class="pointer-events-auto flex items-center gap-2">
+      <button id="muteBtn" type="button" aria-label="كتم أو تشغيل الصوت"
+        class="btn-candy flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/95 backdrop-blur-md text-sky-700 shadow-lg border-2 border-sky-200 text-xl">
+        <span id="muteIcon">🔊</span>
+      </button>
+
+      <button id="homeBtn" type="button" aria-label="العودة للقائمة الرئيسية"
+        class="btn-candy hidden items-center gap-1.5 px-3.5 h-11 sm:h-12 rounded-2xl bg-white/95 backdrop-blur-md text-slate-700 font-extrabold shadow-lg border-2 border-slate-200 text-sm sm:text-base">
+        <span>🏠</span>
+        <span class="hidden sm:inline">القائمة</span>
+      </button>
+    </div>
+
+    <!-- عداد النقاط المباشر أثناء الطيران -->
+    <div id="liveScoreBox" class="hidden flex-col items-center">
+      <div class="px-5 py-1.5 sm:px-7 sm:py-2 rounded-3xl bg-white/95 backdrop-blur-md border-4 border-amber-400 shadow-xl flex items-center gap-2.5">
+        <span class="text-2xl sm:text-3xl">⭐</span>
+        <span id="liveScoreText" class="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight">0</span>
+      </div>
+      <div id="liveHeroBadge" class="mt-1.5 px-3.5 py-0.5 rounded-full bg-slate-900/85 text-white text-xs sm:text-sm font-bold backdrop-blur-sm">
+        اللاعب • البطل: غنى
+      </div>
+    </div>
+
+    <!-- أعلى نتيجة في البطولة -->
+    <div id="liveBestBox" class="hidden sm:flex items-center gap-2 px-4 py-2 rounded-2xl bg-amber-400/95 text-amber-950 font-extrabold shadow-lg border-2 border-amber-200 text-sm">
+      <span>🏆</span>
+      <span>أعلى رقم: <span id="liveBestText">0</span></span>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       إشعار منبثق أنيق (Toast)
+       ======================================================================== -->
+  <div id="toastBanner"
+    class="pointer-events-none fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] transition-all duration-300 opacity-0 translate-y-4 w-[92%] max-w-md">
+    <div id="toastMessage"
+      class="px-5 py-3 rounded-2xl bg-slate-900/95 text-white font-bold text-sm sm:text-base shadow-2xl border border-white/15 backdrop-blur-md text-center">
+      تم النسخ بنجاح!
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       الواجهة الأولى: وضع اللاعبين المحمي (رابط القروب - للقراءة واللعب فقط)
+       ======================================================================== -->
+  <div id="playerOverlay"
+    class="fixed inset-0 z-30 flex items-center justify-center p-2.5 sm:p-5 bg-sky-950/40 backdrop-blur-[3px]">
+    <div class="custom-scroll w-full max-w-5xl max-h-[96dvh] overflow-y-auto rounded-[2rem] bg-white/95 backdrop-blur-xl shadow-2xl border-4 border-white p-4 sm:p-6">
+
+      <!-- شريط الحالة العلوي + زر مشاركة رابط اللعب + زر قفل المشرف الصغير -->
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div class="flex items-center gap-2">
+          <div id="syncStatusPill"
+            class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-extrabold text-xs">
+            <span id="syncDot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+            <span id="syncStatusText">جاري الاتصال...</span>
+          </div>
+
+          <span class="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-50 text-sky-800 border border-sky-200 font-bold text-xs">
+            <span>🛡️</span>
+            <span>نسخة اللاعبين المحمية</span>
+          </span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- زر مشاركة رابط اللاعبين النظيف في القروب -->
+          <button id="sharePlayerLinkBtn" type="button"
+            class="btn-candy inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-l from-indigo-600 to-sky-600 text-white font-extrabold text-xs sm:text-sm shadow-md border-b-2 border-indigo-800">
+            <span>📲</span>
+            <span>مشاركة رابط اللعب في القروب</span>
+          </button>
+
+          <!-- أيقونة القفل الصغيرة للدخول إلى لوحة تحكم المشرف -->
+          <button id="openAdminLockBtn" type="button" title="لوحة تحكم المشرف (محمية برقم سري)"
+            class="btn-candy flex items-center justify-center w-10 h-10 rounded-2xl bg-slate-100 hover:bg-amber-100 text-slate-600 hover:text-amber-800 border border-slate-200 shadow-sm text-base">
+            <span>🔒</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- عنوان البطولة القابل للتخصيص من المشرف -->
+      <div class="text-center mb-4">
+        <h1 id="publicTournamentTitle"
+          class="animate-float text-2xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-l from-sky-600 via-indigo-600 to-pink-600 leading-tight">
+          مغامرة الأبطال الطائرة - تحدي العائلة
+        </h1>
+        <p class="text-slate-600 font-bold text-xs sm:text-sm mt-1">
+          اكتب اسمك، اختر بطلك المفضّل من أطفال العائلة، وحلّق لتتصدر القائمة!
+        </p>
+      </div>
+
+      <!-- تنبيه في حال إيقاف البطولة مؤقتاً من قبل المشرف -->
+      <div id="pausedTournamentBanner"
+        class="hidden mb-4 p-4 rounded-3xl bg-amber-50 border-2 border-amber-300 text-amber-950 text-center shadow-sm">
+        <div class="text-2xl mb-1">⏸️</div>
+        <div class="text-base sm:text-lg font-black">البطولة متوقفة مؤقتاً من قِبل المشرف</div>
+        <div class="text-xs sm:text-sm font-bold text-amber-800 mt-0.5">
+          يمكنك استعراض قائمة الترتيب الحالية، وسيتم فتح اللعب فور تفعيل الجولة الجديدة!
+        </div>
+      </div>
+
+      <!-- تقسيم الشاشة الرئيسية: يمين (إدخال الاسم + اختيار الشخصية) / يسار (لوحة صدارة العائلة المباشرة) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
+
+        <!-- العمود الأيمن (7 أعمدة): الاسم الإلزامي + مستوى السرعة + الشخصيات الستة (قراءة فقط) -->
+        <div class="lg:col-span-7 space-y-4">
+
+          <!-- بطاقة إدخال اسم اللاعب الإلزامي + زر البدء -->
+          <div class="bg-gradient-to-l from-sky-50 to-indigo-50 p-3.5 sm:p-4 rounded-3xl border-2 border-sky-200 shadow-sm">
+            <label for="playerNameInput" class="block text-sm sm:text-base font-black text-slate-800 mb-1.5">
+              1️⃣ اسمك للمنافسة <span class="text-rose-600">*</span>
+            </label>
+            <div class="flex flex-col sm:flex-row gap-2.5">
+              <div class="relative flex-1">
+                <input id="playerNameInput" type="text" value="" maxlength="24" autocomplete="off"
+                  placeholder="اكتب اسمك هنا"
+                  class="w-full px-4 py-3 rounded-2xl bg-white border-2 border-sky-300 focus:border-amber-400 focus:outline-none text-slate-900 font-extrabold text-sm sm:text-base shadow-inner placeholder:text-slate-400 placeholder:font-semibold" />
+              </div>
+
+              <button id="startPlayBtn" type="button"
+                class="btn-candy flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-l from-amber-400 via-orange-500 to-rose-500 text-white font-black text-base sm:text-lg shadow-lg border-b-4 border-rose-700 whitespace-nowrap disabled:opacity-50 disabled:pointer-events-none">
+                <span>🚀</span>
+                <span id="startPlayLabel">ابدأ مع غنى!</span>
+              </button>
+            </div>
+            <p id="nameErrorMsg" class="hidden mt-1.5 text-xs sm:text-sm font-extrabold text-rose-600">
+              ⚠️ من فضلك اكتب اسمك أولاً لتسجيل نتيجتك في لوحة العائلة!
+            </p>
+
+            <!-- مستوى الصعوبة (حر أو مقفل حسب إعدادات المشرف) -->
+            <div class="mt-3 pt-3 border-t border-sky-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span class="text-xs sm:text-sm font-extrabold text-sky-900">مستوى السرعة:</span>
+
+              <!-- يظهر عندما يتيح المشرف للاعبين اختيار السرعة -->
+              <div id="difficultyGroup" class="grid grid-cols-3 gap-1.5 bg-white p-1 rounded-2xl border border-sky-200">
+                <button type="button" data-diff="easy"
+                  class="diff-btn px-2.5 py-1.5 rounded-xl text-xs font-extrabold transition-all bg-emerald-500 text-white shadow">
+                  سهل (للصغار)
+                </button>
+                <button type="button" data-diff="medium"
+                  class="diff-btn px-2.5 py-1.5 rounded-xl text-xs font-extrabold transition-all text-slate-600 hover:bg-slate-100">
+                  متوسط
+                </button>
+                <button type="button" data-diff="hard"
+                  class="diff-btn px-2.5 py-1.5 rounded-xl text-xs font-extrabold transition-all text-slate-600 hover:bg-slate-100">
+                  سريع (محترفين)
+                </button>
+              </div>
+
+              <!-- يظهر عندما يقفل المشرف السرعة لتكافؤ الفرص -->
+              <div id="lockedDifficultyBadge"
+                class="hidden items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 text-amber-950 border border-amber-300 font-extrabold text-xs">
+                <span>🔒</span>
+                <span id="lockedDifficultyText">موحّد للجميع: سهل</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- قسم اختيار الشخصية (الأطفال الستة فقط - بدون أي أزرار تعديل أو رفع صور) -->
+          <div>
+            <div class="flex items-center justify-between mb-2 px-1">
+              <h2 class="text-sm sm:text-base font-black text-slate-800 flex items-center gap-1.5">
+                <span>2️⃣</span>
+                <span>اختر بطلك المفضّل من أطفال العائلة:</span>
+              </h2>
+            </div>
+
+            <div id="playerHeroesGrid" class="grid grid-cols-3 gap-2.5 sm:gap-3">
+              <!-- بطاقات القراءة فقط: غنى، تميم، سيف، لين، سعود، الجوهرة -->
+            </div>
+          </div>
+        </div>
+
+        <!-- العمود الأيسر (5 أعمدة): لوحة الصدارة المباشرة المشتركة -->
+        <div class="lg:col-span-5 bg-slate-50/95 rounded-3xl p-3.5 sm:p-4 border-2 border-slate-200/90 shadow-inner flex flex-col">
+          <div class="flex items-center justify-between mb-2.5">
+            <h2 class="text-base sm:text-lg font-black text-slate-800 flex items-center gap-1.5">
+              <span>🏆</span>
+              <span>قائمة الترتيب المباشرة</span>
+            </h2>
+            <span class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-extrabold border border-amber-300">
+              من الأعلى للأدنى
+            </span>
+          </div>
+
+          <!-- تبويبات الترتيب: ترتيب اللاعبين / ترتيب الأبطال -->
+          <div class="grid grid-cols-2 gap-1.5 bg-white p-1 rounded-2xl border border-slate-200 mb-3">
+            <button id="tabPlayersBtn" type="button"
+              class="py-1.5 px-2 rounded-xl text-xs sm:text-sm font-black bg-sky-600 text-white shadow transition-all">
+              👨‍👩‍👧‍👦 ترتيب اللاعبين
+            </button>
+            <button id="tabHeroesBtn" type="button"
+              class="py-1.5 px-2 rounded-xl text-xs sm:text-sm font-extrabold text-slate-600 hover:bg-slate-100 transition-all">
+              🦸‍♂️ ترتيب الأبطال
+            </button>
+          </div>
+
+          <!-- قائمة النتائج المباشرة -->
+          <div id="startLeaderboardList" class="custom-scroll space-y-2 max-h-[340px] sm:max-h-[410px] overflow-y-auto pl-0.5">
+            <div class="text-center py-8 text-slate-400 font-bold text-sm">
+              جاري تحميل نتائج العائلة...
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       نافذة التحقق من الرقم السري للمشرف (Admin PIN Modal)
+       ======================================================================== -->
+  <div id="pinModalOverlay"
+    class="hidden fixed inset-0 z-50 items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+    <div class="w-full max-w-sm rounded-[2rem] bg-white shadow-2xl border-4 border-amber-300 p-5 sm:p-6 text-center">
+      <div class="w-14 h-14 mx-auto mb-3 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center text-3xl border-2 border-amber-300 shadow-sm">
+        🔐
+      </div>
+      <h2 class="text-xl sm:text-2xl font-black text-slate-800">دخول المشرف</h2>
+      <p class="text-xs sm:text-sm font-bold text-slate-500 mt-1 mb-4">
+        أدخل الرقم السري الخاص بلوحة التحكم لتعديل الصور والنتائج
+      </p>
+
+      <input id="adminPinInput" type="password" inputmode="numeric" maxlength="10"
+        placeholder="••••"
+        class="w-full text-center tracking-[0.4em] text-2xl font-black py-3 px-4 rounded-2xl bg-slate-50 border-2 border-slate-300 focus:border-amber-400 focus:outline-none text-slate-900 mb-2" />
+
+      <p id="pinErrorText" class="hidden text-xs font-extrabold text-rose-600 mb-2">
+        ❌ الرقم السري غير صحيح، حاول مرة أخرى
+      </p>
+
+      <p class="text-[11px] font-bold text-slate-400 mb-4">
+        الرقم الافتراضي لأول مرة: <span class="font-black text-slate-600">2026</span>
+      </p>
+
+      <div class="grid grid-cols-2 gap-2.5">
+        <button id="verifyPinBtn" type="button"
+          class="btn-candy py-2.5 px-4 rounded-2xl bg-gradient-to-l from-amber-500 to-orange-500 text-white font-black text-sm shadow-md border-b-2 border-orange-700">
+          دخول المشرف
+        </button>
+        <button id="cancelPinBtn" type="button"
+          class="btn-candy py-2.5 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-sm">
+          العودة للعب
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       الواجهة الثانية: لوحة تحكم المشرف الخاصة (Admin Control Panel)
+       ======================================================================== -->
+  <div id="adminOverlay"
+    class="hidden fixed inset-0 z-40 items-center justify-center p-2.5 sm:p-5 bg-slate-950/75 backdrop-blur-md">
+    <div class="custom-scroll w-full max-w-5xl max-h-[96dvh] overflow-y-auto rounded-[2rem] bg-slate-50 shadow-2xl border-4 border-amber-400 p-4 sm:p-6">
+
+      <!-- رأس لوحة تحكم المشرف -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b-2 border-slate-200">
+        <div class="flex items-center gap-3">
+          <div class="w-12 h-12 rounded-2xl bg-amber-400 text-amber-950 flex items-center justify-center text-2xl shadow">
+            🛡️
+          </div>
+          <div>
+            <h1 class="text-xl sm:text-2xl font-black text-slate-900">لوحة تحكم المشرف الخاصة</h1>
+            <p class="text-xs sm:text-sm font-bold text-slate-500">
+              التحكم الكامل بصور الأطفال الستة، روابط المشاركة، وإدارة قائمة الترتيب
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="switchToPlayerViewBtn" type="button"
+            class="btn-candy inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-sky-600 text-white font-extrabold text-xs sm:text-sm shadow">
+            <span>🎮</span>
+            <span>معاينة وضع اللاعبين</span>
+          </button>
+
+          <button id="lockAdminBtn" type="button"
+            class="btn-candy inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-slate-800 text-amber-300 font-extrabold text-xs sm:text-sm shadow">
+            <span>🔒</span>
+            <span>قفل اللوحة</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- قسم 1: روابط الموقعين (رابط اللاعبين للقروب + رابط المشرف الخاص بك) -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-5">
+        <!-- رابط اللاعبين المحمي -->
+        <div class="bg-white p-4 rounded-3xl border-2 border-emerald-200 shadow-sm">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-sm font-black text-emerald-900 flex items-center gap-1.5">
+              <span>👨‍👩‍👧‍👦</span>
+              <span>1. رابط اللاعبين (أرسله في القروب)</span>
+            </span>
+            <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">
+              مقفل للتعديل
+            </span>
+          </div>
+          <p class="text-xs font-bold text-slate-500 mb-2.5">
+            أي شخص يفتح هذا الرابط يمكنه اللعب وإضافة اسمه فقط، ولا تظهر له أي أزرار تعديل أو حذف.
+          </p>
+          <div class="flex items-center gap-2">
+            <input id="cleanPlayerUrlBox" type="text" readonly dir="ltr"
+              class="flex-1 px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 font-mono text-xs" />
+            <button id="adminCopyPlayerUrlBtn" type="button"
+              class="btn-candy px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-black text-xs whitespace-nowrap shadow">
+              📲 نسخ للقروب
+            </button>
+          </div>
+        </div>
+
+        <!-- رابط المشرف الخاص -->
+        <div class="bg-white p-4 rounded-3xl border-2 border-amber-300 shadow-sm">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-sm font-black text-amber-950 flex items-center gap-1.5">
+              <span>🔑</span>
+              <span>2. رابط المشرف الخاص بك (لك وحدك)</span>
+            </span>
+            <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-black">
+              محمي برقم سري
+            </span>
+          </div>
+          <p class="text-xs font-bold text-slate-500 mb-2.5">
+            احفظ هذا الرابط لديك للدخول مباشرة إلى لوحة التحكم وتحديث الصور وإدارة النتائج.
+          </p>
+          <div class="flex items-center gap-2">
+            <input id="adminSecretUrlBox" type="text" readonly dir="ltr"
+              class="flex-1 px-3 py-2 rounded-xl bg-amber-50/70 border border-amber-200 text-slate-800 font-mono text-xs" />
+            <button id="adminCopySecretUrlBtn" type="button"
+              class="btn-candy px-3.5 py-2 rounded-xl bg-amber-500 text-amber-950 font-black text-xs whitespace-nowrap shadow">
+              📋 نسخ رابطي
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- قسم 2: إدارة صور الأبطال الستة (غنى، تميم، سيف، لين، سعود، الجوهرة) -->
+      <div class="bg-white p-4 sm:p-5 rounded-3xl border-2 border-slate-200 shadow-sm mb-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 class="text-base sm:text-lg font-black text-slate-800 flex items-center gap-1.5">
+              <span>📸</span>
+              <span>إدارة صور الأبطال الستة (تظهر فوراً عند جميع اللاعبين)</span>
+            </h2>
+            <p class="text-xs font-bold text-slate-500">
+              ارفع صورة كل طفل من جهازك، وسيتم قصّها دائرياً ومزامنتها تلقائياً مع قروب العائلة.
+            </p>
+          </div>
+        </div>
+
+        <div id="adminHeroesGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          <!-- بطاقات الإدارة للستة أطفال -->
+        </div>
+      </div>
+
+      <!-- قسم 3 و 4: إعدادات البطولة والرقم السري + إدارة وحذف النتائج -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+        <!-- إعدادات البطولة والرقم السري (5 أعمدة) -->
+        <div class="lg:col-span-5 bg-white p-4 sm:p-5 rounded-3xl border-2 border-slate-200 shadow-sm space-y-3.5">
+          <h2 class="text-base sm:text-lg font-black text-slate-800 flex items-center gap-1.5">
+            <span>⚙️</span>
+            <span>إعدادات البطولة والأمان</span>
+          </h2>
+
+          <div>
+            <label for="adminTitleInput" class="block text-xs font-extrabold text-slate-700 mb-1">
+              عنوان البطولة في صفحة اللاعبين:
+            </label>
+            <input id="adminTitleInput" type="text" maxlength="48"
+              class="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-300 focus:border-sky-500 focus:outline-none font-bold text-sm text-slate-800" />
+          </div>
+
+          <div>
+            <label for="adminDiffSelect" class="block text-xs font-extrabold text-slate-700 mb-1">
+              التحكم بمستوى السرعة:
+            </label>
+            <select id="adminDiffSelect"
+              class="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-300 focus:border-sky-500 focus:outline-none font-bold text-sm text-slate-800">
+              <option value="free">حر (يختار كل لاعب السرعة التي تناسبه)</option>
+              <option value="easy">مقفل على: سهل (للصغار)</option>
+              <option value="medium">مقفل على: متوسط (تحدي متوازن)</option>
+              <option value="hard">مقفل على: سريع (للمحترفين)</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="adminStatusSelect" class="block text-xs font-extrabold text-slate-700 mb-1">
+              حالة استقبال اللاعبين:
+            </label>
+            <select id="adminStatusSelect"
+              class="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-300 focus:border-sky-500 focus:outline-none font-bold text-sm text-slate-800">
+              <option value="open">🟢 مفتوحة للعب والمنافسة</option>
+              <option value="paused">⏸️ متوقفة مؤقتاً (عرض النتائج فقط)</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="adminNewPinInput" class="block text-xs font-extrabold text-slate-700 mb-1">
+              الرقم السري لدخول المشرف (4 إلى 10 أرقام):
+            </label>
+            <input id="adminNewPinInput" type="text" inputmode="numeric" maxlength="10"
+              class="w-full px-3.5 py-2 rounded-xl bg-amber-50/60 border border-amber-300 focus:border-amber-500 focus:outline-none font-black text-sm text-slate-900 tracking-widest" />
+          </div>
+
+          <button id="saveAdminSettingsBtn" type="button"
+            class="btn-candy w-full py-3 px-4 rounded-2xl bg-gradient-to-l from-sky-600 to-indigo-600 text-white font-black text-sm shadow-md border-b-2 border-indigo-800">
+            💾 حفظ جميع الإعدادات
+          </button>
+        </div>
+
+        <!-- إدارة قائمة الترتيب وحذف النتائج (7 أعمدة) -->
+        <div class="lg:col-span-7 bg-white p-4 sm:p-5 rounded-3xl border-2 border-slate-200 shadow-sm flex flex-col">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h2 class="text-base sm:text-lg font-black text-slate-800 flex items-center gap-1.5">
+              <span>🏆</span>
+              <span>إدارة النتائج المسجلة (<span id="adminScoresCount">0</span>)</span>
+            </h2>
+
+            <button id="resetAllScoresBtn" type="button"
+              class="btn-candy inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-100 hover:bg-rose-600 text-rose-700 hover:text-white font-extrabold text-xs border border-rose-300 transition-colors">
+              <span>🧹</span>
+              <span>تصفير جميع النتائج (جولة جديدة)</span>
+            </button>
+          </div>
+
+          <div id="adminLeaderboardList" class="custom-scroll space-y-2 max-h-[330px] overflow-y-auto pl-1">
+            <!-- قائمة النتائج مع زر حذف فردي بجانب كل نتيجة -->
+          </div>
+        </div>
+
+      </div>
+
+      <!-- مدخل ملفات مخفي متاح للمشرف فقط لرفع صور الأطفال -->
+      <input id="adminPhotoFileInput" type="file" accept="image/*" class="hidden" />
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       نافذة تأكيد مخصصة لتصفير النتائج (بديل آمن لـ confirm)
+       ======================================================================== -->
+  <div id="confirmResetModal"
+    class="hidden fixed inset-0 z-[55] items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm">
+    <div class="w-full max-w-sm rounded-[2rem] bg-white shadow-2xl border-4 border-rose-300 p-5 sm:p-6 text-center">
+      <div class="text-4xl mb-2">⚠️</div>
+      <h3 class="text-xl font-black text-slate-800">تأكيد تصفير القائمة</h3>
+      <p class="text-xs sm:text-sm font-bold text-slate-600 mt-1.5 mb-5">
+        هل أنت متأكد من حذف جميع النتائج المسجلة وبدء جولة جديدة من الصفر؟ لن تتأثر صور الأطفال.
+      </p>
+      <div class="grid grid-cols-2 gap-2.5">
+        <button id="confirmResetYesBtn" type="button"
+          class="btn-candy py-2.5 px-4 rounded-2xl bg-rose-600 text-white font-black text-sm shadow">
+          نعم، صفّر النتائج
+        </button>
+        <button id="confirmResetNoBtn" type="button"
+          class="btn-candy py-2.5 px-4 rounded-2xl bg-slate-100 text-slate-700 font-extrabold text-sm">
+          إلغاء
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       شاشة نهاية الجولة ولوحة الصدارة المشتركة (Game Over Overlay)
+       ======================================================================== -->
+  <div id="gameOverOverlay"
+    class="hidden fixed inset-0 z-40 items-center justify-center p-3 sm:p-5 bg-slate-950/60 backdrop-blur-sm">
+    <div class="custom-scroll w-full max-w-lg max-h-[95dvh] overflow-y-auto rounded-[2rem] bg-white shadow-2xl border-4 border-amber-300 p-4 sm:p-6 text-center">
+
+      <div id="newRecordBadge"
+        class="hidden inline-flex items-center gap-1.5 px-4 py-1 rounded-full bg-gradient-to-l from-amber-400 to-yellow-300 text-amber-950 font-black text-xs sm:text-sm mb-2 shadow animate-bounce">
+        <span>🎉</span>
+        <span>رقم قياسي جديد لك في قائمة العائلة!</span>
+        <span>🎉</span>
+      </div>
+
+      <h2 class="text-2xl sm:text-3xl font-black text-slate-800 mb-3">انتهت الجولة!</h2>
+
+      <!-- بطاقة نتيجة اللاعب والبطل -->
+      <div class="flex items-center justify-center gap-3.5 bg-gradient-to-l from-sky-50 to-indigo-50 p-3.5 rounded-3xl border-2 border-sky-200 mb-4">
+        <div class="relative shrink-0">
+          <img id="goHeroAvatar" src="" alt="صورة البطل"
+            class="w-20 h-20 rounded-full object-cover border-4 border-amber-400 shadow-md bg-white" />
+          <span id="goHeroBadgeIcon" class="absolute -bottom-1 -right-1 text-2xl">🏅</span>
+        </div>
+        <div class="text-right">
+          <div id="goPlayerAndHero" class="text-base sm:text-lg font-black text-sky-950 leading-snug">
+            اللاعب • البطل: غنى
+          </div>
+          <div class="flex items-center gap-2 mt-1.5">
+            <div class="bg-white px-3 py-1.5 rounded-2xl border border-slate-200 shadow-sm">
+              <div class="text-[11px] font-bold text-slate-500">نتيجة الجولة</div>
+              <div id="goRoundScore" class="text-2xl font-black text-orange-600">0</div>
+            </div>
+            <div class="bg-amber-50 px-3 py-1.5 rounded-2xl border border-amber-200 shadow-sm">
+              <div class="text-[11px] font-bold text-amber-800">أعلى رقم لك</div>
+              <div id="goBestScore" class="text-2xl font-black text-amber-600">0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- لوحة ترتيب العائلة المباشرة في نهاية الجولة -->
+      <div class="bg-slate-50 rounded-3xl p-3.5 border border-slate-200 mb-4 text-right">
+        <div class="flex items-center justify-between mb-2 px-1">
+          <span class="text-sm font-black text-slate-800 flex items-center gap-1.5">
+            <span>🏆</span>
+            <span>ترتيب العائلة من الأعلى</span>
+          </span>
+          <span class="text-xs font-bold text-slate-400">تحديث لحظي</span>
+        </div>
+        <div id="gameOverLeaderboardList" class="custom-scroll space-y-1.5 max-h-48 overflow-y-auto">
+          <!-- يتم تعبئتها تلقائياً -->
+        </div>
+      </div>
+
+      <!-- أزرار التحكم بعد انتهاء الجولة -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <button id="playAgainBtn" type="button"
+          class="btn-candy flex items-center justify-center gap-1.5 py-3 px-4 rounded-2xl bg-gradient-to-l from-emerald-500 to-teal-600 text-white font-black text-sm sm:text-base shadow-lg border-b-4 border-teal-800">
+          <span>🔄</span>
+          <span>العب مجدداً</span>
+        </button>
+
+        <button id="changeHeroBtn" type="button"
+          class="btn-candy flex items-center justify-center gap-1.5 py-3 px-3 rounded-2xl bg-sky-100 hover:bg-sky-200 text-sky-900 font-extrabold text-xs sm:text-sm border-2 border-sky-300">
+          <span>👨‍👩‍👧‍👦</span>
+          <span>تغيير الاسم / البطل</span>
+        </button>
+
+        <button id="goShareBtn" type="button"
+          class="btn-candy flex items-center justify-center gap-1.5 py-3 px-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs sm:text-sm shadow">
+          <span>📲</span>
+          <span>مشاركة الرابط</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       منطق اللعبة الكامل + الفصل الصارم بين واجهة اللاعبين ولوحة تحكم المشرف
+       ======================================================================== -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    (function () {
+      'use strict';
+
+      /* ======================================================================
+         1. بيانات الأطفال الستة الثابتة (غنى، تميم، سيف، لين، سعود، الجوهرة)
+         ====================================================================== */
+      const HEROES_CONFIG = [
+        {
+          id: 'ghina',
+          name: 'غنى',
+          badge: '👑',
+          primaryColor: '#ec4899',
+          secondaryColor: '#fbcfe8',
+          accessory: 'crown'
+        },
+        {
+          id: 'tamim',
+          name: 'تميم',
+          badge: '🚀',
+          primaryColor: '#0284c7',
+          secondaryColor: '#bae6fd',
+          accessory: 'mask'
+        },
+        {
+          id: 'saif',
+          name: 'سيف',
+          badge: '⚡',
+          primaryColor: '#059669',
+          secondaryColor: '#a7f3d0',
+          accessory: 'bolt'
+        },
+        {
+          id: 'leen',
+          name: 'لين',
+          badge: '🦋',
+          primaryColor: '#7c3aed',
+          secondaryColor: '#ddd6fe',
+          accessory: 'bow'
+        },
+        {
+          id: 'saud',
+          name: 'سعود',
+          badge: '🌟',
+          primaryColor: '#d97706',
+          secondaryColor: '#fde68a',
+          accessory: 'astronaut'
+        },
+        {
+          id: 'aljawhara',
+          name: 'الجوهرة',
+          badge: '💎',
+          primaryColor: '#e11d48',
+          secondaryColor: '#fecdd3',
+          accessory: 'tiara'
+        }
+      ];
+
+      const DIFFICULTY_SETTINGS = {
+        easy: {
+          label: 'سهل',
+          gravity: 980,
+          jumpVelocity: -375,
+          pipeSpeed: 165,
+          pipeGapRatio: 0.40,
+          minPipeGap: 175,
+          pipeSpacing: 340
+        },
+        medium: {
+          label: 'متوسط',
+          gravity: 1320,
+          jumpVelocity: -435,
+          pipeSpeed: 225,
+          pipeGapRatio: 0.31,
+          minPipeGap: 145,
+          pipeSpacing: 310
+        },
+        hard: {
+          label: 'سريع',
+          gravity: 1650,
+          jumpVelocity: -485,
+          pipeSpeed: 295,
+          pipeGapRatio: 0.26,
+          minPipeGap: 125,
+          pipeSpacing: 290
+        }
+      };
+
+      /* التحقق من معامل الرابط لمعرفة هل طُلب رابط المشرف (?admin=1) */
+      const urlParams = new URLSearchParams(window.location.search);
+      const requestedAdminViaUrl = urlParams.get('admin') === '1';
+
+      /* الحالة العامة للتطبيق */
+      const state = {
+        mode: 'MENU', // MENU | READY | PLAYING | GAMEOVER
+        isAdminAuthenticated: false,
+        playerName: '',
+        selectedHeroId: 'ghina',
+        difficulty: 'easy',
+        muted: false,
+        leaderboardTab: 'players', // 'players' | 'heroes'
+        // إعدادات البطولة المتزامنة من Firestore
+        tournamentSettings: {
+          title: 'مغامرة الأبطال الطائرة - تحدي العائلة',
+          lockedDifficulty: 'free', // 'free' | 'easy' | 'medium' | 'hard'
+          status: 'open',           // 'open' | 'paused'
+          adminPin: '2026'
+        },
+        sharedPhotos: {},   // { heroId: dataURL }
+        defaultAvatars: {}, // { heroId: { dataUrl, image } }
+        activeImages: {},   // { heroId: HTMLImageElement }
+        leaderboardEntries: [],
+        adminUploadingHeroId: null,
+        score: 0,
+        newRecord: false,
+        lastTime: 0,
+        worldTime: 0,
+        shakeTimer: 0,
+        shakeIntensity: 0
+      };
+
+      /* متغيرات Firebase */
+      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+      let db = null;
+      let auth = null;
+      let currentUser = null;
+
+      /* ======================================================================
+         2. توليد الروابط النظيفة: رابط اللاعبين للقروب vs رابط المشرف الخاص
+         ====================================================================== */
+      function getCleanPlayerUrl() {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('admin');
+        return url.toString();
+      }
+
+      function getSecretAdminUrl() {
+        const url = new URL(window.location.href);
+        url.searchParams.set('admin', '1');
+        return url.toString();
+      }
+
+      /* ======================================================================
+         3. محرك المؤثرات الصوتية (Web Audio API)
+         ====================================================================== */
+      class SoundEngine {
+        constructor() {
+          this.ctx = null;
+        }
+
+        ensureContext() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) this.ctx = new AudioCtx();
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+        }
+
+        playFlap() {
+          if (state.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(310, now);
+          osc.frequency.exponentialRampToValueAtTime(590, now + 0.11);
+          gain.gain.setValueAtTime(0.16, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.12);
+        }
+
+        playScore() {
+          if (state.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          [587.33, 880].forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.065);
+            gain.gain.setValueAtTime(0.15, now + idx * 0.065);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.065 + 0.18);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + idx * 0.065);
+            osc.stop(now + idx * 0.065 + 0.19);
+          });
+        }
+
+        playBonus() {
+          if (state.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            const t = now + idx * 0.055;
+            osc.frequency.setValueAtTime(freq, t);
+            gain.gain.setValueAtTime(0.16, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.23);
+          });
+        }
+
+        playBump() {
+          if (state.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(210, now);
+          osc.frequency.exponentialRampToValueAtTime(68, now + 0.26);
+          gain.gain.setValueAtTime(0.24, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.29);
+        }
+      }
+
+      const sound = new SoundEngine();
+
+      /* ======================================================================
+         4. توليد الرسومات الكرتونية الافتراضية لكل طفل
+         ====================================================================== */
+      function generateIllustratedAvatar(hero) {
+        const size = 180;
+        const off = document.createElement('canvas');
+        off.width = size;
+        off.height = size;
+        const c = off.getContext('2d');
+
+        const cx = size / 2;
+        const grad = c.createRadialGradient(62, 54, 12, cx, cx, 95);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.35, hero.secondaryColor);
+        grad.addColorStop(1, hero.primaryColor);
+        c.fillStyle = grad;
+        c.fillRect(0, 0, size, size);
+
+        // وجه كرتوني مبتسم
+        c.fillStyle = '#fde6d2';
+        c.beginPath();
+        c.arc(cx, 98, 46, 0, Math.PI * 2);
+        c.fill();
+        c.lineWidth = 4;
+        c.strokeStyle = 'rgba(255,255,255,0.88)';
+        c.stroke();
+
+        // خدود وردية
+        c.fillStyle = 'rgba(244, 114, 182, 0.35)';
+        c.beginPath();
+        c.arc(64, 105, 9, 0, Math.PI * 2);
+        c.arc(116, 105, 9, 0, Math.PI * 2);
+        c.fill();
+
+        // عيون لامعة
+        c.fillStyle = '#1e293b';
+        c.beginPath();
+        c.arc(73, 92, 6.5, 0, Math.PI * 2);
+        c.arc(107, 92, 6.5, 0, Math.PI * 2);
+        c.fill();
+
+        c.fillStyle = '#ffffff';
+        c.beginPath();
+        c.arc(71, 90, 2.5, 0, Math.PI * 2);
+        c.arc(105, 90, 2.5, 0, Math.PI * 2);
+        c.fill();
+
+        // ابتسامة
+        c.strokeStyle = '#be123c';
+        c.lineWidth = 4;
+        c.lineCap = 'round';
+        c.beginPath();
+        c.arc(cx, 104, 14, 0.18 * Math.PI, 0.82 * Math.PI);
+        c.stroke();
+
+        // إكسسوار مميز لكل طفل
+        if (hero.accessory === 'crown' || hero.accessory === 'tiara') {
+          c.fillStyle = '#fbbf24';
+          c.strokeStyle = '#b45309';
+          c.lineWidth = 2.5;
+          c.beginPath();
+          c.moveTo(62, 55);
+          c.lineTo(67, 30);
+          c.lineTo(80, 45);
+          c.lineTo(90, 25);
+          c.lineTo(100, 45);
+          c.lineTo(113, 30);
+          c.lineTo(118, 55);
+          c.closePath();
+          c.fill();
+          c.stroke();
+        } else if (hero.accessory === 'mask') {
+          c.fillStyle = '#0284c7';
+          c.beginPath();
+          c.roundRect(52, 81, 76, 22, 10);
+          c.fill();
+          c.fillStyle = '#ffffff';
+          c.beginPath();
+          c.arc(73, 92, 6.5, 0, Math.PI * 2);
+          c.arc(107, 92, 6.5, 0, Math.PI * 2);
+          c.fill();
+          c.fillStyle = '#0f172a';
+          c.beginPath();
+          c.arc(73, 92, 3.5, 0, Math.PI * 2);
+          c.arc(107, 92, 3.5, 0, Math.PI * 2);
+          c.fill();
+        } else if (hero.accessory === 'bow') {
+          c.fillStyle = '#a855f7';
+          c.beginPath();
+          c.moveTo(90, 46);
+          c.lineTo(64, 32);
+          c.lineTo(68, 59);
+          c.closePath();
+          c.moveTo(90, 46);
+          c.lineTo(116, 32);
+          c.lineTo(112, 59);
+          c.closePath();
+          c.fill();
+          c.fillStyle = '#facc15';
+          c.beginPath();
+          c.arc(90, 46, 7, 0, Math.PI * 2);
+          c.fill();
+        } else {
+          c.fillStyle = '#facc15';
+          c.beginPath();
+          c.arc(90, 40, 13, 0, Math.PI * 2);
+          c.fill();
+        }
+
+        // شارة الاسم
+        c.fillStyle = 'rgba(15, 23, 42, 0.78)';
+        c.beginPath();
+        c.roundRect(34, 140, 112, 28, 14);
+        c.fill();
+
+        c.fillStyle = '#ffffff';
+        c.font = '900 16px Cairo, sans-serif';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText(hero.name, cx, 154);
+
+        const dataUrl = off.toDataURL('image/png');
+        const img = new Image();
+        img.src = dataUrl;
+        return { dataUrl, image: img };
+      }
+
+      function initDefaultAvatars() {
+        HEROES_CONFIG.forEach(hero => {
+          state.defaultAvatars[hero.id] = generateIllustratedAvatar(hero);
+          state.activeImages[hero.id] = state.defaultAvatars[hero.id].image;
+        });
+      }
+
+      /* ======================================================================
+         5. الاتصال السحابي مع Firebase Firestore (المصادقة + المزامنة اللحظية)
+         ====================================================================== */
+      const syncDot = document.getElementById('syncDot');
+      const syncStatusText = document.getElementById('syncStatusText');
+
+      function setSyncStatus(connected, text) {
+        syncStatusText.textContent = text;
+        if (connected) {
+          syncDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500';
+        } else {
+          syncDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse';
+        }
+      }
+
+      async function initFirebaseAndSync() {
+        if (!firebaseConfig) {
+          setSyncStatus(false, 'وضع المعاينة المحلي');
+          applyTournamentSettingsToUI();
+          renderAllViews();
+          return;
+        }
+
+        try {
+          const app = initializeApp(firebaseConfig);
+          auth = getAuth(app);
+          db = getFirestore(app);
+
+          // القاعدة 3: المصادقة أولاً قبل أي استعلام أو كتابة في Firestore
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await signInWithCustomToken(auth, __initial_auth_token);
+          } else {
+            await signInAnonymously(auth);
+          }
+
+          currentUser = auth.currentUser;
+          if (!currentUser) {
+            setSyncStatus(false, 'تعذر التحقق من الجلسة');
+            return;
+          }
+
+          setSyncStatus(true, 'متصل مباشرة 🟢');
+
+          // 1. الاستماع اللحظي لإعدادات البطولة (/artifacts/{appId}/public/data/settings/main)
+          const settingsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'main');
+          onSnapshot(
+            settingsDocRef,
+            (docSnap) => {
+              if (docSnap.exists()) {
+                const data = docSnap.data();
+                state.tournamentSettings = {
+                  title: data.title || 'مغامرة الأبطال الطائرة - تحدي العائلة',
+                  lockedDifficulty: data.lockedDifficulty || 'free',
+                  status: data.status || 'open',
+                  adminPin: data.adminPin || '2026'
+                };
+              }
+              applyTournamentSettingsToUI();
+            },
+            (err) => {
+              console.error('Settings sync error:', err);
+            }
+          );
+
+          // 2. الاستماع اللحظي لصور الأطفال الستة (/artifacts/{appId}/public/data/characters)
+          const charactersCol = collection(db, 'artifacts', appId, 'public', 'data', 'characters');
+          onSnapshot(
+            charactersCol,
+            (snapshot) => {
+              const updatedPhotos = {};
+              snapshot.forEach((docSnap) => {
+                const d = docSnap.data();
+                if (d && d.heroId && d.avatarDataUrl) {
+                  updatedPhotos[d.heroId] = d.avatarDataUrl;
+                }
+              });
+
+              state.sharedPhotos = updatedPhotos;
+
+              HEROES_CONFIG.forEach((hero) => {
+                if (state.sharedPhotos[hero.id]) {
+                  const img = new Image();
+                  img.src = state.sharedPhotos[hero.id];
+                  state.activeImages[hero.id] = img;
+                } else {
+                  state.activeImages[hero.id] = state.defaultAvatars[hero.id].image;
+                }
+              });
+
+              renderAllViews();
+            },
+            (err) => {
+              console.error('Characters sync error:', err);
+            }
+          );
+
+          // 3. الاستماع اللحظي لقائمة الترتيب (/artifacts/{appId}/public/data/scores)
+          const scoresCol = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
+          onSnapshot(
+            scoresCol,
+            (snapshot) => {
+              const list = [];
+              snapshot.forEach((docSnap) => {
+                const d = docSnap.data();
+                if (d && d.playerName && typeof d.bestScore === 'number') {
+                  list.push({ id: docSnap.id, ...d });
+                }
+              });
+
+              // الترتيب التنازلي في الذاكرة من الأعلى إلى الأدنى
+              list.sort((a, b) => b.bestScore - a.bestScore);
+              state.leaderboardEntries = list;
+              updateSelectedHeroUI();
+              renderAllViews();
+            },
+            (err) => {
+              console.error('Scores sync error:', err);
+            }
+          );
+        } catch (err) {
+          console.error('Firebase init error:', err);
+          setSyncStatus(false, 'وضع غير متصل');
+        }
+      }
+
+      /* ======================================================================
+         6. وظائف المشرف الحصرية (Admin Only Actions)
+         ====================================================================== */
+      async function adminUploadCharacterPhoto(heroId, file) {
+        if (!state.isAdminAuthenticated) return;
+        if (!file || !file.type.startsWith('image/')) {
+          showToast('يرجى اختيار ملف صورة صالح.');
+          return;
+        }
+
+        const heroObj = getHeroById(heroId);
+        showToast(`جاري قص وضغط صورة ${heroObj.name} ومشاركتها مع اللاعبين...`);
+
+        try {
+          let sourceBitmap = null;
+          let fallbackImg = null;
+
+          if (typeof createImageBitmap === 'function') {
+            sourceBitmap = await createImageBitmap(file);
+          } else {
+            const rawUrl = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+            fallbackImg = await new Promise((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => resolve(img);
+              img.onerror = reject;
+              img.src = rawUrl;
+            });
+          }
+
+          const srcW = sourceBitmap ? sourceBitmap.width : fallbackImg.width;
+          const srcH = sourceBitmap ? sourceBitmap.height : fallbackImg.height;
+          const minSide = Math.min(srcW, srcH);
+          const sx = Math.floor((srcW - minSide) / 2);
+          const sy = Math.floor((srcH - minSide) / 2);
+
+          // قص دائري/مربع وتحجيم إلى 180x180 بكسل وضغط JPEG بجودة 0.78
+          const targetSize = 180;
+          const off = document.createElement('canvas');
+          off.width = targetSize;
+          off.height = targetSize;
+          const c = off.getContext('2d');
+          c.imageSmoothingEnabled = true;
+          c.imageSmoothingQuality = 'high';
+          c.drawImage(sourceBitmap || fallbackImg, sx, sy, minSide, minSide, 0, 0, targetSize, targetSize);
+
+          if (sourceBitmap && typeof sourceBitmap.close === 'function') {
+            sourceBitmap.close();
+          }
+
+          const compressedDataUrl = off.toDataURL('image/jpeg', 0.78);
+
+          // تحديث فوري
+          state.sharedPhotos[heroId] = compressedDataUrl;
+          const newImg = new Image();
+          newImg.src = compressedDataUrl;
+          state.activeImages[heroId] = newImg;
+          renderAllViews();
+
+          if (db && currentUser) {
+            const charDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'characters', heroId);
+            await setDoc(charDocRef, {
+              heroId,
+              name: heroObj.name,
+              avatarDataUrl: compressedDataUrl,
+              updatedAt: Date.now()
+            });
+            showToast(`تم حفظ صورة ${heroObj.name} وتحديثها لدى جميع اللاعبين! 📸✅`);
+          } else {
+            showToast(`تم تحديث صورة ${heroObj.name} في المعاينة المحلية.`);
+          }
+        } catch (err) {
+          console.error('Admin photo upload error:', err);
+          showToast('حدث خطأ أثناء معالجة الصورة، اختر صورة أخرى.');
+        }
+      }
+
+      async function adminResetCharacterPhoto(heroId) {
+        if (!state.isAdminAuthenticated) return;
+        const heroObj = getHeroById(heroId);
+
+        delete state.sharedPhotos[heroId];
+        state.activeImages[heroId] = state.defaultAvatars[heroId].image;
+        renderAllViews();
+
+        if (db && currentUser) {
+          try {
+            const charDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'characters', heroId);
+            await setDoc(charDocRef, {
+              heroId,
+              name: heroObj.name,
+              avatarDataUrl: '',
+              updatedAt: Date.now()
+            });
+            showToast(`تمت استعادة الصورة الكرتونية للبطل ${heroObj.name}.`);
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }
+
+      async function adminSaveSettings() {
+        if (!state.isAdminAuthenticated) return;
+
+        const newTitle = adminTitleInput.value.trim() || 'مغامرة الأبطال الطائرة - تحدي العائلة';
+        const newLockedDiff = adminDiffSelect.value;
+        const newStatus = adminStatusSelect.value;
+        const rawPin = adminNewPinInput.value.trim();
+
+        if (rawPin.length < 4) {
+          showToast('⚠️ يجب أن يتكون الرقم السري للمشرف من 4 أرقام على الأقل!');
+          adminNewPinInput.focus();
+          return;
+        }
+
+        const updatedSettings = {
+          title: newTitle,
+          lockedDifficulty: newLockedDiff,
+          status: newStatus,
+          adminPin: rawPin,
+          updatedAt: Date.now()
+        };
+
+        state.tournamentSettings = updatedSettings;
+        applyTournamentSettingsToUI();
+
+        if (db && currentUser) {
+          try {
+            const settingsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'main');
+            await setDoc(settingsDocRef, updatedSettings);
+            showToast('تم حفظ إعدادات البطولة والرقم السري بنجاح! 💾✅');
+          } catch (err) {
+            console.error('Save settings error:', err);
+            showToast('تعذر حفظ الإعدادات على السحابة.');
+          }
+        } else {
+          showToast('تم حفظ الإعدادات محلياً.');
+        }
+      }
+
+      async function adminDeleteSingleScore(scoreDocId, playerName) {
+        if (!state.isAdminAuthenticated) return;
+
+        state.leaderboardEntries = state.leaderboardEntries.filter(item => item.id !== scoreDocId);
+        renderAllViews();
+
+        if (db && currentUser) {
+          try {
+            const scoreRef = doc(db, 'artifacts', appId, 'public', 'data', 'scores', scoreDocId);
+            await deleteDoc(scoreRef);
+            showToast(`تم حذف نتيجة "${playerName}" من القائمة 🗑️`);
+          } catch (err) {
+            console.error('Delete score error:', err);
+          }
+        }
+      }
+
+      async function adminResetAllScores() {
+        if (!state.isAdminAuthenticated) return;
+
+        state.leaderboardEntries = [];
+        renderAllViews();
+        confirmResetModal.classList.add('hidden');
+        confirmResetModal.classList.remove('flex');
+
+        if (db && currentUser) {
+          try {
+            const scoresCol = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
+            const snap = await getDocs(scoresCol);
+            const deletePromises = [];
+            snap.forEach(docSnap => {
+              deletePromises.push(deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'scores', docSnap.id)));
+            });
+            await Promise.all(deletePromises);
+            showToast('تم تصفير جميع النتائج وبدء جولة جديدة بنجاح! 🧹✨');
+          } catch (err) {
+            console.error('Reset all scores error:', err);
+          }
+        } else {
+          showToast('تم تصفير النتائج محلياً.');
+        }
+      }
+
+      /* ======================================================================
+         7. تسجيل نتيجة اللاعب عند نهاية الجولة
+         ====================================================================== */
+      function getPlayerScoreDocId() {
+        const uidPart = currentUser ? currentUser.uid : 'local';
+        const cleanName = (state.playerName || 'لاعب')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9\u0600-\u06FF_-]/g, '_');
+        return `${uidPart}_${cleanName}`;
+      }
+
+      function getCurrentPlayerSavedBest() {
+        const docId = getPlayerScoreDocId();
+        const found = state.leaderboardEntries.find(e => e.id === docId);
+        return found ? found.bestScore : 0;
+      }
+
+      async function submitScoreToLeaderboard(roundScore) {
+        const hero = getHeroById(state.selectedHeroId);
+        const diffLabel = DIFFICULTY_SETTINGS[state.difficulty].label;
+        const docId = getPlayerScoreDocId();
+        const prevBest = getCurrentPlayerSavedBest();
+
+        if (roundScore > prevBest) {
+          state.newRecord = true;
+          sound.playBonus();
+
+          const existingIdx = state.leaderboardEntries.findIndex(e => e.id === docId);
+          const updatedEntry = {
+            id: docId,
+            uid: currentUser ? currentUser.uid : 'local',
+            playerName: state.playerName,
+            characterId: hero.id,
+            characterName: hero.name,
+            difficulty: diffLabel,
+            bestScore: roundScore,
+            updatedAt: Date.now()
+          };
+
+          if (existingIdx >= 0) {
+            state.leaderboardEntries[existingIdx] = updatedEntry;
+          } else {
+            state.leaderboardEntries.push(updatedEntry);
+          }
+          state.leaderboardEntries.sort((a, b) => b.bestScore - a.bestScore);
+          renderAllViews();
+
+          if (db && currentUser) {
+            try {
+              const scoreDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'scores', docId);
+              await setDoc(scoreDocRef, {
+                uid: currentUser.uid,
+                playerName: state.playerName,
+                characterId: hero.id,
+                characterName: hero.name,
+                difficulty: diffLabel,
+                bestScore: roundScore,
+                updatedAt: Date.now()
+              });
+            } catch (err) {
+              console.error('Failed to save score:', err);
+            }
+          }
+        }
+      }
+
+      /* ======================================================================
+         8. عناصر DOM وإدارة التبديل بين وضع اللاعبين ووضع المشرف
+         ====================================================================== */
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+
+      const playerOverlay = document.getElementById('playerOverlay');
+      const publicTournamentTitle = document.getElementById('publicTournamentTitle');
+      const pausedTournamentBanner = document.getElementById('pausedTournamentBanner');
+      const playerNameInput = document.getElementById('playerNameInput');
+      const nameErrorMsg = document.getElementById('nameErrorMsg');
+      const playerHeroesGrid = document.getElementById('playerHeroesGrid');
+      const startPlayBtn = document.getElementById('startPlayBtn');
+      const startPlayLabel = document.getElementById('startPlayLabel');
+      const difficultyGroup = document.getElementById('difficultyGroup');
+      const lockedDifficultyBadge = document.getElementById('lockedDifficultyBadge');
+      const lockedDifficultyText = document.getElementById('lockedDifficultyText');
+
+      const sharePlayerLinkBtn = document.getElementById('sharePlayerLinkBtn');
+      const openAdminLockBtn = document.getElementById('openAdminLockBtn');
+
+      // عناصر نافذة PIN ولوحة المشرف
+      const pinModalOverlay = document.getElementById('pinModalOverlay');
+      const adminPinInput = document.getElementById('adminPinInput');
+      const pinErrorText = document.getElementById('pinErrorText');
+      const verifyPinBtn = document.getElementById('verifyPinBtn');
+      const cancelPinBtn = document.getElementById('cancelPinBtn');
+
+      const adminOverlay = document.getElementById('adminOverlay');
+      const switchToPlayerViewBtn = document.getElementById('switchToPlayerViewBtn');
+      const lockAdminBtn = document.getElementById('lockAdminBtn');
+      const cleanPlayerUrlBox = document.getElementById('cleanPlayerUrlBox');
+      const adminSecretUrlBox = document.getElementById('adminSecretUrlBox');
+      const adminCopyPlayerUrlBtn = document.getElementById('adminCopyPlayerUrlBtn');
+      const adminCopySecretUrlBtn = document.getElementById('adminCopySecretUrlBtn');
+      const adminHeroesGrid = document.getElementById('adminHeroesGrid');
+      const adminPhotoFileInput = document.getElementById('adminPhotoFileInput');
+
+      const adminTitleInput = document.getElementById('adminTitleInput');
+      const adminDiffSelect = document.getElementById('adminDiffSelect');
+      const adminStatusSelect = document.getElementById('adminStatusSelect');
+      const adminNewPinInput = document.getElementById('adminNewPinInput');
+      const saveAdminSettingsBtn = document.getElementById('saveAdminSettingsBtn');
+
+      const adminScoresCount = document.getElementById('adminScoresCount');
+      const adminLeaderboardList = document.getElementById('adminLeaderboardList');
+      const resetAllScoresBtn = document.getElementById('resetAllScoresBtn');
+      const confirmResetModal = document.getElementById('confirmResetModal');
+      const confirmResetYesBtn = document.getElementById('confirmResetYesBtn');
+      const confirmResetNoBtn = document.getElementById('confirmResetNoBtn');
+
+      // عناصر الترتيب و HUD وشاشة النهاية
+      const tabPlayersBtn = document.getElementById('tabPlayersBtn');
+      const tabHeroesBtn = document.getElementById('tabHeroesBtn');
+      const startLeaderboardList = document.getElementById('startLeaderboardList');
+      const gameOverLeaderboardList = document.getElementById('gameOverLeaderboardList');
+
+      const muteBtn = document.getElementById('muteBtn');
+      const muteIcon = document.getElementById('muteIcon');
+      const homeBtn = document.getElementById('homeBtn');
+      const liveScoreBox = document.getElementById('liveScoreBox');
+      const liveScoreText = document.getElementById('liveScoreText');
+      const liveHeroBadge = document.getElementById('liveHeroBadge');
+      const liveBestBox = document.getElementById('liveBestBox');
+      const liveBestText = document.getElementById('liveBestText');
+
+      const gameOverOverlay = document.getElementById('gameOverOverlay');
+      const newRecordBadge = document.getElementById('newRecordBadge');
+      const goHeroAvatar = document.getElementById('goHeroAvatar');
+      const goHeroBadgeIcon = document.getElementById('goHeroBadgeIcon');
+      const goPlayerAndHero = document.getElementById('goPlayerAndHero');
+      const goRoundScore = document.getElementById('goRoundScore');
+      const goBestScore = document.getElementById('goBestScore');
+      const playAgainBtn = document.getElementById('playAgainBtn');
+      const changeHeroBtn = document.getElementById('changeHeroBtn');
+      const goShareBtn = document.getElementById('goShareBtn');
+
+      const toastBanner = document.getElementById('toastBanner');
+      const toastMessage = document.getElementById('toastMessage');
+      let toastTimeout = null;
+
+      function showToast(msg) {
+        toastMessage.textContent = msg;
+        toastBanner.classList.remove('opacity-0', 'translate-y-4');
+        toastBanner.classList.add('opacity-100', 'translate-y-0');
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+          toastBanner.classList.add('opacity-0', 'translate-y-4');
+          toastBanner.classList.remove('opacity-100', 'translate-y-0');
+        }, 3200);
+      }
+
+      function copyTextSafely(textToCopy, successMessage) {
+        try {
+          const tempInput = document.createElement('textarea');
+          tempInput.value = textToCopy;
+          tempInput.setAttribute('readonly', '');
+          tempInput.style.position = 'fixed';
+          tempInput.style.opacity = '0';
+          document.body.appendChild(tempInput);
+          tempInput.select();
+          document.execCommand('copy');
+          document.body.removeChild(tempInput);
+          showToast(successMessage);
+        } catch (err) {
+          showToast('تعذر النسخ التلقائي، يمكنك نسخ الرابط يدوياً.');
+        }
+      }
+
+      async function shareCleanPlayerLink() {
+        const cleanUrl = getCleanPlayerUrl();
+        const title = state.tournamentSettings.title;
+        const shareText = `تعالوا نلعب في "${title}"! 🚀\nاكتب اسمك واختر بطلك من أطفال العائلة وحاول تتصدر القائمة 🏆:`;
+
+        if (navigator.share) {
+          try {
+            await navigator.share({ title, text: shareText, url: cleanUrl });
+            return;
+          } catch (e) {
+            // الانتقال للنسخ التلقائي في حال عدم دعم المشاركة أو الإلغاء
+          }
+        }
+        copyTextSafely(`${shareText}\n${cleanUrl}`, 'تم نسخ رابط اللاعبين المحمي! الصقه الآن في قروب العائلة 📲🎉');
+      }
+
+      function getHeroById(id) {
+        return HEROES_CONFIG.find(h => h.id === id) || HEROES_CONFIG[0];
+      }
+
+      function getHeroAvatarSrc(heroId) {
+        return state.sharedPhotos[heroId] || state.defaultAvatars[heroId].dataUrl;
+      }
+
+      function escapeHtml(str) {
+        return String(str || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      /* تطبيق إعدادات البطولة القادمة من المشرف على واجهة اللاعبين */
+      function applyTournamentSettingsToUI() {
+        const s = state.tournamentSettings;
+        publicTournamentTitle.textContent = s.title;
+
+        // تحديث حقول المشرف أيضاً إذا كانت مفتوحة
+        adminTitleInput.value = s.title;
+        adminDiffSelect.value = s.lockedDifficulty;
+        adminStatusSelect.value = s.status;
+        adminNewPinInput.value = s.adminPin;
+
+        // حالة إيقاف أو فتح البطولة
+        if (s.status === 'paused') {
+          pausedTournamentBanner.classList.remove('hidden');
+          startPlayBtn.disabled = true;
+        } else {
+          pausedTournamentBanner.classList.add('hidden');
+          startPlayBtn.disabled = false;
+        }
+
+        // حالة قفل مستوى السرعة لتكافؤ الفرص
+        if (s.lockedDifficulty && s.lockedDifficulty !== 'free' && DIFFICULTY_SETTINGS[s.lockedDifficulty]) {
+          state.difficulty = s.lockedDifficulty;
+          difficultyGroup.classList.add('hidden');
+          lockedDifficultyBadge.classList.remove('hidden');
+          lockedDifficultyBadge.classList.add('inline-flex');
+          lockedDifficultyText.textContent = `موحّد للجميع: ${DIFFICULTY_SETTINGS[s.lockedDifficulty].label}`;
+        } else {
+          difficultyGroup.classList.remove('hidden');
+          lockedDifficultyBadge.classList.add('hidden');
+          lockedDifficultyBadge.classList.remove('inline-flex');
+        }
+      }
+
+      function updateSelectedHeroUI() {
+        const hero = getHeroById(state.selectedHeroId);
+        startPlayLabel.textContent = `ابدأ مع ${hero.name}!`;
+        const pName = state.playerName || 'اللاعب';
+        liveHeroBadge.textContent = `${pName} • البطل: ${hero.name} ${hero.badge}`;
+        const topOverall = state.leaderboardEntries.length > 0 ? state.leaderboardEntries[0].bestScore : 0;
+        liveBestText.textContent = topOverall;
+      }
+
+      /* رسم بطاقات الأطفال في وضع اللاعبين (قراءة فقط — صفر أزرار تعديل) */
+      function renderPlayerHeroesGrid() {
+        playerHeroesGrid.innerHTML = '';
+
+        HEROES_CONFIG.forEach(hero => {
+          const isSelected = hero.id === state.selectedHeroId;
+          const avatarSrc = getHeroAvatarSrc(hero.id);
+
+          const heroScores = state.leaderboardEntries.filter(
+            e => e.characterId === hero.id || e.characterName === hero.name
+          );
+          const topHeroScore = heroScores.length > 0 ? Math.max(...heroScores.map(e => e.bestScore)) : 0;
+
+          const card = document.createElement('div');
+          card.className = `hero-card relative flex flex-col items-center p-2.5 sm:p-3.5 rounded-3xl bg-white border-2 cursor-pointer shadow-sm ${
+            isSelected ? 'selected border-amber-400' : 'border-slate-200 hover:border-sky-300'
+          }`;
+
+          card.innerHTML = `
+            ${isSelected ? `
+              <div class="absolute -top-2.5 right-2 px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 font-black text-[10px] shadow">
+                ⭐ مختار
+              </div>
+            ` : ''}
+
+            <div class="relative mt-1 mb-1.5">
+              <img src="${avatarSrc}" alt="${hero.name}"
+                class="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-4 shadow bg-slate-100"
+                style="border-color: ${hero.primaryColor};" />
+              <span class="absolute -bottom-1 -left-1 w-6 h-6 rounded-full bg-white shadow flex items-center justify-center text-sm border border-slate-100">
+                ${hero.badge}
+              </span>
+            </div>
+
+            <div class="text-sm sm:text-base font-black text-slate-800 leading-tight">${hero.name}</div>
+
+            <div class="mt-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-extrabold text-[10px] sm:text-[11px]">
+              🏆 الأعلى: ${topHeroScore}
+            </div>
+          `;
+
+          card.addEventListener('click', () => {
+            state.selectedHeroId = hero.id;
+            sound.playFlap();
+            renderPlayerHeroesGrid();
+            updateSelectedHeroUI();
+          });
+
+          playerHeroesGrid.appendChild(card);
+        });
+      }
+
+      /* رسم بطاقات الأطفال في لوحة المشرف (مع أزرار رفع/تغيير الصورة واستعادة الافتراضي) */
+      function renderAdminHeroesGrid() {
+        adminHeroesGrid.innerHTML = '';
+
+        HEROES_CONFIG.forEach(hero => {
+          const hasCustomPhoto = Boolean(state.sharedPhotos[hero.id]);
+          const avatarSrc = getHeroAvatarSrc(hero.id);
+
+          const card = document.createElement('div');
+          card.className = 'flex flex-col items-center p-3 rounded-2xl bg-slate-50 border-2 border-slate-200 text-center';
+
+          card.innerHTML = `
+            <div class="relative mb-2">
+              <img src="${avatarSrc}" alt="${hero.name}"
+                class="w-16 h-16 rounded-full object-cover border-4 shadow bg-white"
+                style="border-color: ${hero.primaryColor};" />
+              <span class="absolute -bottom-1 -left-1 text-base">${hero.badge}</span>
+            </div>
+
+            <div class="text-sm font-black text-slate-800 mb-2">${hero.name}</div>
+
+            <button type="button" data-admin-upload="${hero.id}"
+              class="btn-candy w-full py-1.5 px-2 rounded-xl bg-sky-600 text-white font-extrabold text-[11px] shadow-sm mb-1.5">
+              📷 ${hasCustomPhoto ? 'تغيير الصورة' : 'رفع صورة'}
+            </button>
+
+            ${hasCustomPhoto ? `
+              <button type="button" data-admin-reset="${hero.id}"
+                class="w-full py-1 px-2 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold text-[10px] transition-colors">
+                استعادة الكرتونية
+              </button>
+            ` : `
+              <span class="text-[10px] font-bold text-slate-400 py-1">صورة كرتونية</span>
+            `}
+          `;
+
+          card.querySelector('[data-admin-upload]').addEventListener('click', () => {
+            state.adminUploadingHeroId = hero.id;
+            adminPhotoFileInput.value = '';
+            adminPhotoFileInput.click();
+          });
+
+          const resetBtn = card.querySelector('[data-admin-reset]');
+          if (resetBtn) {
+            resetBtn.addEventListener('click', () => adminResetCharacterPhoto(hero.id));
+          }
+
+          adminHeroesGrid.appendChild(card);
+        });
+      }
+
+      /* بناء HTML لقائمة الترتيب العامة (وضع اللاعبين + شاشة النهاية) */
+      function buildPublicLeaderboardHTML(entries, modeTab) {
+        const medals = ['🥇', '🥈', '🥉'];
+
+        if (modeTab === 'heroes') {
+          const heroStats = HEROES_CONFIG.map(hero => {
+            const matching = entries.filter(e => e.characterId === hero.id || e.characterName === hero.name);
+            matching.sort((a, b) => b.bestScore - a.bestScore);
+            const topRecord = matching[0] || null;
+            return {
+              hero,
+              bestScore: topRecord ? topRecord.bestScore : 0,
+              topPlayer: topRecord ? topRecord.playerName : 'بانتظار أول بطل'
+            };
+          }).sort((a, b) => b.bestScore - a.bestScore);
+
+          return heroStats.map((item, idx) => {
+            const rankLabel = idx < 3 ? medals[idx] : `#${idx + 1}`;
+            const isSelected = item.hero.id === state.selectedHeroId;
+            return `
+              <div class="flex items-center justify-between px-3 py-2 rounded-2xl border ${
+                isSelected ? 'bg-amber-50 border-amber-300 shadow-sm' : 'bg-white border-slate-100'
+              }">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <span class="text-base font-black w-6 text-center shrink-0">${rankLabel}</span>
+                  <img src="${getHeroAvatarSrc(item.hero.id)}" alt="${item.hero.name}"
+                    class="w-9 h-9 rounded-full object-cover border-2 shrink-0" style="border-color:${item.hero.primaryColor};" />
+                  <div class="min-w-0 text-right">
+                    <div class="text-sm font-black text-slate-800 truncate">${item.hero.name} ${item.hero.badge}</div>
+                    <div class="text-[11px] font-bold text-slate-500 truncate">أعلى رقم بواسطة: ${escapeHtml(item.topPlayer)}</div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-100/80 text-amber-900 font-black text-sm shrink-0">
+                  <span>⭐</span>
+                  <span>${item.bestScore}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+
+        if (!entries || entries.length === 0) {
+          return `
+            <div class="text-center py-7 px-4 rounded-2xl bg-white border border-dashed border-slate-300">
+              <div class="text-3xl mb-1">🏆</div>
+              <div class="text-sm font-black text-slate-700">القائمة بانتظار أول متسابق!</div>
+              <div class="text-xs font-bold text-slate-500 mt-0.5">اكتب اسمك وابدأ الطيران لتكون الأول في قروب العائلة</div>
+            </div>
+          `;
+        }
+
+        const currentDocId = getPlayerScoreDocId();
+
+        return entries.map((entry, idx) => {
+          const rankLabel = idx < 3 ? medals[idx] : `${idx + 1}`;
+          const isMe = entry.id === currentDocId;
+          const heroObj = getHeroById(entry.characterId);
+          const avatarSrc = getHeroAvatarSrc(heroObj.id);
+
+          return `
+            <div class="flex items-center justify-between px-3 py-2 rounded-2xl border transition-all ${
+              isMe ? 'bg-amber-100/90 border-amber-400 shadow-sm' : 'bg-white border-slate-100'
+            }">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <span class="text-base font-black w-6 text-center shrink-0 text-slate-700">${rankLabel}</span>
+                <img src="${avatarSrc}" alt="${heroObj.name}"
+                  class="w-9 h-9 rounded-full object-cover border-2 shrink-0 bg-slate-100"
+                  style="border-color:${heroObj.primaryColor};" />
+                <div class="min-w-0 text-right">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-sm font-black text-slate-900 truncate">${escapeHtml(entry.playerName)}</span>
+                    ${isMe ? '<span class="px-1.5 py-0.2 rounded-md bg-amber-400 text-amber-950 text-[10px] font-black">أنت</span>' : ''}
+                  </div>
+                  <div class="text-[11px] font-bold text-slate-500 truncate">
+                    البطل: <span class="text-sky-700 font-extrabold">${heroObj.name}</span> • ${escapeHtml(entry.difficulty || 'سهل')}
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 font-black text-sm shrink-0">
+                <span>⭐</span>
+                <span>${entry.bestScore}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      /* رسم قائمة النتائج في لوحة المشرف (مع زر حذف بجانب كل نتيجة) */
+      function renderAdminLeaderboard() {
+        adminScoresCount.textContent = state.leaderboardEntries.length;
+
+        if (state.leaderboardEntries.length === 0) {
+          adminLeaderboardList.innerHTML = `
+            <div class="text-center py-8 text-slate-400 font-bold text-sm bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+              لا توجد نتائج مسجلة حالياً في البطولة.
+            </div>
+          `;
+          return;
+        }
+
+        adminLeaderboardList.innerHTML = '';
+        state.leaderboardEntries.forEach((entry, idx) => {
+          const heroObj = getHeroById(entry.characterId);
+          const row = document.createElement('div');
+          row.className = 'flex items-center justify-between gap-2 px-3 py-2 rounded-2xl bg-slate-50 border border-slate-200';
+
+          row.innerHTML = `
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="text-xs font-black text-slate-500 w-5 text-center">#${idx + 1}</span>
+              <img src="${getHeroAvatarSrc(heroObj.id)}" alt="${heroObj.name}"
+                class="w-8 h-8 rounded-full object-cover border-2 shrink-0"
+                style="border-color:${heroObj.primaryColor};" />
+              <div class="min-w-0">
+                <div class="text-sm font-black text-slate-800 truncate">${escapeHtml(entry.playerName)}</div>
+                <div class="text-[11px] font-bold text-slate-500 truncate">
+                  البطل: ${heroObj.name} • المستوى: ${escapeHtml(entry.difficulty || 'سهل')}
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="px-2.5 py-1 rounded-xl bg-amber-100 text-amber-900 font-black text-xs">
+                ⭐ ${entry.bestScore}
+              </span>
+              <button type="button" class="btn-candy px-2.5 py-1.5 rounded-xl bg-rose-100 hover:bg-rose-600 text-rose-700 hover:text-white font-extrabold text-xs transition-colors">
+                🗑️ حذف
+              </button>
+            </div>
+          `;
+
+          row.querySelector('button').addEventListener('click', () => {
+            adminDeleteSingleScore(entry.id, entry.playerName);
+          });
+
+          adminLeaderboardList.appendChild(row);
+        });
+      }
+
+      function renderAllViews() {
+        renderPlayerHeroesGrid();
+        startLeaderboardList.innerHTML = buildPublicLeaderboardHTML(state.leaderboardEntries, state.leaderboardTab);
+        gameOverLeaderboardList.innerHTML = buildPublicLeaderboardHTML(state.leaderboardEntries, 'players');
+        if (state.isAdminAuthenticated) {
+          renderAdminHeroesGrid();
+          renderAdminLeaderboard();
+        }
+      }
+
+      /* فتح نافذة PIN الخاصة بالمشرف */
+      function openPinPrompt() {
+        if (state.isAdminAuthenticated) {
+          openAdminDashboard();
+          return;
+        }
+        adminPinInput.value = '';
+        pinErrorText.classList.add('hidden');
+        pinModalOverlay.classList.remove('hidden');
+        pinModalOverlay.classList.add('flex');
+        setTimeout(() => adminPinInput.focus(), 80);
+      }
+
+      function verifyAdminPin() {
+        const entered = adminPinInput.value.trim();
+        const expected = state.tournamentSettings.adminPin || '2026';
+        if (entered === expected) {
+          state.isAdminAuthenticated = true;
+          pinModalOverlay.classList.add('hidden');
+          pinModalOverlay.classList.remove('flex');
+          openAdminDashboard();
+          showToast('تم فتح لوحة تحكم المشرف بنجاح 🛡️');
+        } else {
+          pinErrorText.classList.remove('hidden');
+          adminPinInput.classList.add('border-rose-500', 'animate-shake');
+          setTimeout(() => adminPinInput.classList.remove('animate-shake'), 380);
+        }
+      }
+
+      function openAdminDashboard() {
+        cleanPlayerUrlBox.value = getCleanPlayerUrl();
+        adminSecretUrlBox.value = getSecretAdminUrl();
+        applyTournamentSettingsToUI();
+        renderAdminHeroesGrid();
+        renderAdminLeaderboard();
+
+        playerOverlay.classList.add('hidden');
+        adminOverlay.classList.remove('hidden');
+        adminOverlay.classList.add('flex');
+      }
+
+      function closeAdminToPlayerView() {
+        adminOverlay.classList.add('hidden');
+        adminOverlay.classList.remove('flex');
+        playerOverlay.classList.remove('hidden');
+        renderAllViews();
+      }
+
+      function lockAndExitAdmin() {
+        state.isAdminAuthenticated = false;
+        closeAdminToPlayerView();
+        showToast('تم قفل لوحة المشرف والعودة لوضع اللاعبين 🔒');
+      }
+
+      /* ======================================================================
+         9. محرك اللعبة والفيزياء والرسوميات (HTML5 Canvas 60fps)
+         ====================================================================== */
+      let viewWidth = window.innerWidth;
+      let viewHeight = window.innerHeight;
+      let groundHeight = 84;
+
+      const player = {
+        x: 120,
+        y: 250,
+        vy: 0,
+        radius: 28,
+        rotation: 0,
+        wingPhase: 0,
+        flapBoost: 0
+      };
+
+      let pipes = [];
+      let collectibles = [];
+      let particles = [];
+      let floatingTexts = [];
+      let clouds = [];
+      let groundOffset = 0;
+      let hillOffset = 0;
+
+      function resizeCanvas() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+        viewWidth = window.innerWidth;
+        viewHeight = window.innerHeight;
+        groundHeight = Math.max(68, Math.min(96, Math.round(viewHeight * 0.12)));
+
+        canvas.width = Math.floor(viewWidth * dpr);
+        canvas.height = Math.floor(viewHeight * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        player.x = Math.max(85, Math.min(viewWidth * 0.28, 220));
+        player.radius = Math.max(24, Math.min(31, Math.round(Math.min(viewWidth, viewHeight) * 0.048)));
+
+        if (clouds.length === 0) initClouds();
+      }
+
+      function initClouds() {
+        clouds = [];
+        const count = Math.max(5, Math.ceil(viewWidth / 220));
+        for (let i = 0; i < count; i++) {
+          clouds.push({
+            x: (i / count) * (viewWidth + 200),
+            y: 45 + Math.random() * (viewHeight * 0.36),
+            scale: 0.65 + Math.random() * 0.75,
+            speed: 14 + Math.random() * 18
+          });
+        }
+      }
+
+      function prepareRound() {
+        state.score = 0;
+        state.newRecord = false;
+        pipes = [];
+        collectibles = [];
+        particles = [];
+        floatingTexts = [];
+
+        player.x = Math.max(85, Math.min(viewWidth * 0.28, 220));
+        player.y = (viewHeight - groundHeight) * 0.45;
+        player.vy = 0;
+        player.rotation = 0;
+        player.wingPhase = 0;
+        player.flapBoost = 0;
+
+        liveScoreText.textContent = '0';
+        updateSelectedHeroUI();
+      }
+
+      function validateAndStartGame() {
+        if (state.tournamentSettings.status === 'paused') {
+          showToast('البطولة متوقفة مؤقتاً من قِبل المشرف ⏸️');
+          return;
+        }
+
+        const enteredName = playerNameInput.value.trim();
+        if (!enteredName) {
+          nameErrorMsg.classList.remove('hidden');
+          playerNameInput.classList.add('border-rose-500', 'bg-rose-50', 'animate-shake');
+          playerNameInput.focus();
+          showToast('من فضلك اكتب اسمك أولاً للمنافسة في قائمة العائلة! ✍️');
+          setTimeout(() => {
+            playerNameInput.classList.remove('animate-shake');
+          }, 400);
+          return;
+        }
+
+        nameErrorMsg.classList.add('hidden');
+        playerNameInput.classList.remove('border-rose-500', 'bg-rose-50');
+        state.playerName = enteredName;
+        enterReadyState();
+      }
+
+      function enterReadyState() {
+        if (state.tournamentSettings.status === 'paused') {
+          returnToPlayerMenu();
+          return;
+        }
+        sound.ensureContext();
+        prepareRound();
+        state.mode = 'READY';
+
+        playerOverlay.classList.add('hidden');
+        adminOverlay.classList.add('hidden');
+        adminOverlay.classList.remove('flex');
+        gameOverOverlay.classList.add('hidden');
+        gameOverOverlay.classList.remove('flex');
+
+        liveScoreBox.classList.remove('hidden');
+        liveScoreBox.classList.add('flex');
+        homeBtn.classList.remove('hidden');
+        homeBtn.classList.add('flex');
+      }
+
+      function startPlaying() {
+        state.mode = 'PLAYING';
+        const cfg = DIFFICULTY_SETTINGS[state.difficulty];
+        const firstX = viewWidth + 140;
+        spawnPipePair(firstX);
+        spawnPipePair(firstX + cfg.pipeSpacing);
+      }
+
+      function triggerFlap() {
+        if (state.mode === 'READY') {
+          startPlaying();
+        }
+        if (state.mode !== 'PLAYING') return;
+
+        const cfg = DIFFICULTY_SETTINGS[state.difficulty];
+        player.vy = cfg.jumpVelocity;
+        player.flapBoost = 1.0;
+        sound.playFlap();
+
+        for (let i = 0; i < 6; i++) {
+          particles.push({
+            x: player.x - player.radius * 0.6,
+            y: player.y + (Math.random() - 0.5) * 18,
+            vx: -70 - Math.random() * 80,
+            vy: (Math.random() - 0.5) * 70,
+            size: 3 + Math.random() * 4,
+            color: 'rgba(255, 255, 255, 0.85)',
+            life: 0.45,
+            maxLife: 0.45
+          });
+        }
+      }
+
+      function spawnPipePair(xPos) {
+        const cfg = DIFFICULTY_SETTINGS[state.difficulty];
+        const playableHeight = viewHeight - groundHeight;
+        const gapHeight = Math.max(cfg.minPipeGap, Math.round(playableHeight * cfg.pipeGapRatio));
+        const margin = Math.max(65, playableHeight * 0.14);
+        const minCenter = margin + gapHeight / 2;
+        const maxCenter = playableHeight - margin - gapHeight / 2;
+        const gapCenterY = minCenter + Math.random() * Math.max(20, maxCenter - minCenter);
+
+        const pipeThemes = [
+          { body: '#10b981', light: '#6ee7b7', dark: '#047857' },
+          { body: '#3b82f6', light: '#93c5fd', dark: '#1d4ed8' },
+          { body: '#f59e0b', light: '#fde68a', dark: '#b45309' },
+          { body: '#8b5cf6', light: '#c4b5fd', dark: '#5b21b6' }
+        ];
+        const theme = pipeThemes[Math.floor(Math.random() * pipeThemes.length)];
+        const pipeWidth = Math.max(64, Math.min(82, Math.round(viewWidth * 0.14)));
+
+        pipes.push({
+          x: xPos,
+          width: pipeWidth,
+          gapTop: gapCenterY - gapHeight / 2,
+          gapBottom: gapCenterY + gapHeight / 2,
+          passed: false,
+          theme
+        });
+
+        const midX = xPos + cfg.pipeSpacing * 0.5;
+        const collectibleY = Math.max(
+          90,
+          Math.min(playableHeight - 90, gapCenterY + (Math.random() - 0.5) * 95)
+        );
+
+        if (Math.random() < 0.44) {
+          const otherHeroes = HEROES_CONFIG.filter(h => h.id !== state.selectedHeroId);
+          const friend = otherHeroes[Math.floor(Math.random() * otherHeroes.length)];
+          collectibles.push({
+            type: 'sibling',
+            hero: friend,
+            x: midX,
+            y: collectibleY,
+            baseY: collectibleY,
+            radius: 24,
+            bobOffset: Math.random() * Math.PI * 2,
+            collected: false
+          });
+        } else {
+          collectibles.push({
+            type: 'star',
+            x: midX,
+            y: collectibleY,
+            baseY: collectibleY,
+            radius: 19,
+            bobOffset: Math.random() * Math.PI * 2,
+            collected: false
+          });
+        }
+      }
+
+      function spawnSparkleBurst(x, y, primaryColor) {
+        const colors = ['#fbbf24', '#ffffff', primaryColor, '#38bdf8', '#f472b6'];
+        for (let i = 0; i < 18; i++) {
+          const angle = (Math.PI * 2 * i) / 18 + Math.random() * 0.2;
+          const speed = 90 + Math.random() * 170;
+          particles.push({
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            size: 4 + Math.random() * 5,
+            color: colors[i % colors.length],
+            life: 0.65,
+            maxLife: 0.65
+          });
+        }
+      }
+
+      function addFloatingText(x, y, text, color) {
+        floatingTexts.push({ x, y, text, color, life: 1.05, maxLife: 1.05 });
+      }
+
+      async function handleCollision() {
+        if (state.mode !== 'PLAYING') return;
+        state.mode = 'GAMEOVER';
+        state.shakeTimer = 0.28;
+        state.shakeIntensity = 9;
+        sound.playBump();
+
+        await submitScoreToLeaderboard(state.score);
+
+        setTimeout(() => {
+          showGameOverModal();
+        }, 360);
+      }
+
+      function showGameOverModal() {
+        const hero = getHeroById(state.selectedHeroId);
+        goHeroAvatar.src = getHeroAvatarSrc(hero.id);
+        goHeroBadgeIcon.textContent = hero.badge;
+        goPlayerAndHero.textContent = `${state.playerName} • البطل: ${hero.name}`;
+        goRoundScore.textContent = state.score;
+        goBestScore.textContent = Math.max(state.score, getCurrentPlayerSavedBest());
+
+        if (state.newRecord && state.score > 0) {
+          newRecordBadge.classList.remove('hidden');
+          newRecordBadge.classList.add('inline-flex');
+        } else {
+          newRecordBadge.classList.add('hidden');
+          newRecordBadge.classList.remove('inline-flex');
+        }
+
+        renderAllViews();
+        gameOverOverlay.classList.remove('hidden');
+        gameOverOverlay.classList.add('flex');
+      }
+
+      /* ======================================================================
+         10. حلقة التحديث والرسم على الكانفاس (60fps)
+         ====================================================================== */
+      function update(dt) {
+        state.worldTime += dt;
+
+        if (state.shakeTimer > 0) {
+          state.shakeTimer = Math.max(0, state.shakeTimer - dt);
+        }
+
+        clouds.forEach(cloud => {
+          cloud.x -= cloud.speed * dt;
+          if (cloud.x < -160) {
+            cloud.x = viewWidth + 140;
+            cloud.y = 40 + Math.random() * (viewHeight * 0.35);
+          }
+        });
+
+        const cfg = DIFFICULTY_SETTINGS[state.difficulty];
+        const scrollSpeed = (state.mode === 'PLAYING') ? cfg.pipeSpeed : (state.mode === 'READY' ? 75 : 0);
+
+        groundOffset = (groundOffset + scrollSpeed * dt) % 48;
+        hillOffset = (hillOffset + scrollSpeed * 0.25 * dt) % 320;
+
+        player.wingPhase += dt * (state.mode === 'PLAYING' ? 14 : 8);
+        if (player.flapBoost > 0) {
+          player.flapBoost = Math.max(0, player.flapBoost - dt * 3.5);
+        }
+
+        if (state.mode === 'MENU' || state.mode === 'READY') {
+          const baseH = (viewHeight - groundHeight) * 0.45;
+          player.y = baseH + Math.sin(state.worldTime * 4.2) * 11;
+          player.rotation = Math.sin(state.worldTime * 4.2) * 0.06;
+          return;
+        }
+
+        if (state.mode === 'PLAYING') {
+          player.vy += cfg.gravity * dt;
+          player.y += player.vy * dt;
+
+          const targetRot = Math.max(-0.42, Math.min(0.68, player.vy / 680));
+          player.rotation += (targetRot - player.rotation) * Math.min(1, dt * 12);
+
+          if (player.y - player.radius < 8) {
+            player.y = player.radius + 8;
+            if (player.vy < 0) player.vy = 0;
+          }
+
+          const floorY = viewHeight - groundHeight;
+          if (player.y + player.radius * 0.85 >= floorY) {
+            player.y = floorY - player.radius * 0.85;
+            handleCollision();
+            return;
+          }
+
+          pipes.forEach(pipe => {
+            pipe.x -= cfg.pipeSpeed * dt;
+
+            if (!pipe.passed && pipe.x + pipe.width < player.x) {
+              pipe.passed = true;
+              state.score += 1;
+              liveScoreText.textContent = state.score;
+              sound.playScore();
+              addFloatingText(player.x, player.y - player.radius - 14, '+1 ⭐', '#fbbf24');
+            }
+
+            const hitR = player.radius * 0.76;
+            const withinPipeX = (player.x + hitR > pipe.x + 4) && (player.x - hitR < pipe.x + pipe.width - 4);
+            if (withinPipeX) {
+              const hitTop = (player.y - hitR < pipe.gapTop);
+              const hitBottom = (player.y + hitR > pipe.gapBottom);
+              if (hitTop || hitBottom) {
+                handleCollision();
+              }
+            }
+          });
+
+          if (pipes.length > 0 && pipes[0].x + pipes[0].width < -100) {
+            pipes.shift();
+          }
+          const lastPipe = pipes[pipes.length - 1];
+          if (lastPipe && lastPipe.x < viewWidth + 120) {
+            spawnPipePair(lastPipe.x + cfg.pipeSpacing);
+          }
+
+          collectibles.forEach(item => {
+            if (item.collected) return;
+            item.x -= cfg.pipeSpeed * dt;
+            item.y = item.baseY + Math.sin(state.worldTime * 4.5 + item.bobOffset) * 10;
+
+            const dist = Math.hypot(player.x - item.x, player.y - item.y);
+            if (dist < player.radius + item.radius + 4) {
+              item.collected = true;
+              if (item.type === 'sibling') {
+                state.score += 3;
+                sound.playBonus();
+                spawnSparkleBurst(item.x, item.y, item.hero.primaryColor);
+                addFloatingText(item.x, item.y - 18, `+3 ${item.hero.name}! 🎉`, '#ffffff');
+              } else {
+                state.score += 2;
+                sound.playBonus();
+                spawnSparkleBurst(item.x, item.y, '#f59e0b');
+                addFloatingText(item.x, item.y - 16, '+2 🌟', '#fef08a');
+              }
+              liveScoreText.textContent = state.score;
+            }
+          });
+
+          collectibles = collectibles.filter(item => !item.collected && item.x > -80);
+        }
+
+        particles.forEach(p => {
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.life -= dt;
+        });
+        particles = particles.filter(p => p.life > 0);
+
+        floatingTexts.forEach(ft => {
+          ft.y -= 48 * dt;
+          ft.life -= dt;
+        });
+        floatingTexts = floatingTexts.filter(ft => ft.life > 0);
+      }
+
+      function drawCloud(x, y, scale) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+        ctx.beginPath();
+        ctx.arc(0, 0, 26, 0, Math.PI * 2);
+        ctx.arc(24, -8, 32, 0, Math.PI * 2);
+        ctx.arc(54, -2, 25, 0, Math.PI * 2);
+        ctx.arc(28, 12, 24, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawBackground() {
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, viewHeight - groundHeight);
+        skyGrad.addColorStop(0, '#0ea5e9');
+        skyGrad.addColorStop(0.55, '#7dd3fc');
+        skyGrad.addColorStop(1, '#e0f2fe');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, viewWidth, viewHeight);
+
+        const sunX = viewWidth - 85;
+        const sunY = 85;
+        const sunGlow = ctx.createRadialGradient(sunX, sunY, 15, sunX, sunY, 75);
+        sunGlow.addColorStop(0, 'rgba(253, 224, 71, 0.95)');
+        sunGlow.addColorStop(0.5, 'rgba(253, 224, 71, 0.35)');
+        sunGlow.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = sunGlow;
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, 75, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#fde047';
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, 32, 0, Math.PI * 2);
+        ctx.fill();
+
+        clouds.forEach(c => drawCloud(c.x, c.y, c.scale));
+
+        const floorY = viewHeight - groundHeight;
+        ctx.fillStyle = '#86efac';
+        ctx.beginPath();
+        ctx.moveTo(0, floorY);
+        for (let x = -320; x <= viewWidth + 320; x += 160) {
+          const hx = x - hillOffset;
+          ctx.quadraticCurveTo(hx + 80, floorY - 68, hx + 160, floorY);
+        }
+        ctx.lineTo(viewWidth, floorY);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      function drawPipe(pipe) {
+        const floorY = viewHeight - groundHeight;
+        const capHeight = 26;
+        const capOverhang = 7;
+
+        const drawSingleColumn = (x, y, w, h, isTop) => {
+          if (h <= 0) return;
+          const grad = ctx.createLinearGradient(x, y, x + w, y);
+          grad.addColorStop(0, pipe.theme.dark);
+          grad.addColorStop(0.28, pipe.theme.light);
+          grad.addColorStop(0.65, pipe.theme.body);
+          grad.addColorStop(1, pipe.theme.dark);
+
+          ctx.fillStyle = grad;
+          ctx.fillRect(x, y, w, h);
+
+          ctx.strokeStyle = 'rgba(15, 23, 42, 0.25)';
+          ctx.lineWidth = 2.5;
+          ctx.strokeRect(x, y, w, h);
+
+          const capY = isTop ? (y + h - capHeight) : y;
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.roundRect(x - capOverhang, capY, w + capOverhang * 2, capHeight, 10);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.32)';
+          ctx.beginPath();
+          ctx.roundRect(x - capOverhang + 6, capY + 4, w + capOverhang * 2 - 12, 6, 4);
+          ctx.fill();
+        };
+
+        drawSingleColumn(pipe.x, 0, pipe.width, pipe.gapTop, true);
+        drawSingleColumn(pipe.x, pipe.gapBottom, pipe.width, floorY - pipe.gapBottom, false);
+      }
+
+      function drawStarShape(cx, cy, spikes, outerR, innerR, fill, stroke) {
+        let rot = (Math.PI / 2) * 3;
+        const step = Math.PI / spikes;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - outerR);
+        for (let i = 0; i < spikes; i++) {
+          ctx.lineTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
+          rot += step;
+          ctx.lineTo(cx + Math.cos(rot) * innerR, cy + Math.sin(rot) * innerR);
+          rot += step;
+        }
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = stroke;
+        ctx.stroke();
+      }
+
+      function drawCollectibles() {
+        collectibles.forEach(item => {
+          if (item.collected) return;
+          ctx.save();
+          ctx.translate(item.x, item.y);
+
+          if (item.type === 'sibling') {
+            const r = item.radius;
+            const img = state.activeImages[item.hero.id];
+
+            ctx.beginPath();
+            ctx.arc(0, 0, r + 5, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+            ctx.fill();
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.clip();
+            if (img && img.complete && img.naturalWidth > 0) {
+              ctx.drawImage(img, -r, -r, r * 2, r * 2);
+            } else {
+              ctx.fillStyle = item.hero.primaryColor;
+              ctx.fillRect(-r, -r, r * 2, r * 2);
+            }
+            ctx.restore();
+
+            ctx.lineWidth = 3.5;
+            ctx.strokeStyle = item.hero.primaryColor;
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+            ctx.beginPath();
+            ctx.roundRect(-26, r + 3, 52, 17, 8);
+            ctx.fill();
+
+            ctx.fillStyle = '#fde047';
+            ctx.font = '800 11px Cairo, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(item.hero.name, 0, r + 12);
+          } else {
+            const spin = Math.sin(state.worldTime * 5 + item.bobOffset) * 0.22;
+            ctx.rotate(spin);
+            drawStarShape(0, 0, 5, item.radius, item.radius * 0.48, '#fbbf24', '#d97706');
+          }
+
+          ctx.restore();
+        });
+      }
+
+      function drawGround() {
+        const floorY = viewHeight - groundHeight;
+
+        const dirtGrad = ctx.createLinearGradient(0, floorY, 0, viewHeight);
+        dirtGrad.addColorStop(0, '#d97706');
+        dirtGrad.addColorStop(1, '#92400e');
+        ctx.fillStyle = dirtGrad;
+        ctx.fillRect(0, floorY, viewWidth, groundHeight);
+
+        const grassH = 22;
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(0, floorY, viewWidth, grassH);
+
+        ctx.fillStyle = '#4ade80';
+        for (let x = -48; x < viewWidth + 48; x += 48) {
+          const gx = x - groundOffset;
+          ctx.beginPath();
+          ctx.moveTo(gx, floorY);
+          ctx.lineTo(gx + 24, floorY);
+          ctx.lineTo(gx + 14, floorY + grassH);
+          ctx.lineTo(gx - 10, floorY + grassH);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        ctx.fillStyle = '#15803d';
+        ctx.fillRect(0, floorY, viewWidth, 4);
+      }
+
+      function drawPlayer() {
+        const hero = getHeroById(state.selectedHeroId);
+        const img = state.activeImages[hero.id];
+        const r = player.radius;
+
+        ctx.save();
+        ctx.translate(player.x, player.y);
+
+        // اسم الطفل فوق الشخصية
+        ctx.save();
+        ctx.translate(0, -r - 20);
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+        ctx.beginPath();
+        ctx.roundRect(-36, -11, 72, 21, 10);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '900 13px Cairo, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(hero.name, 0, 0);
+        ctx.restore();
+
+        ctx.rotate(player.rotation);
+
+        // الجناح الخلفي
+        const flapAngle = Math.sin(player.wingPhase) * 0.55 - player.flapBoost * 0.45;
+        ctx.save();
+        ctx.translate(-r * 0.45, 2);
+        ctx.rotate(flapAngle);
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = hero.primaryColor;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(-10, 4, 17, 10, -0.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, r + 5, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+        ctx.fill();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.clip();
+        if (img && img.complete && img.naturalWidth > 0) {
+          ctx.drawImage(img, -r, -r, r * 2, r * 2);
+        } else {
+          ctx.fillStyle = hero.primaryColor;
+          ctx.fillRect(-r, -r, r * 2, r * 2);
+        }
+        ctx.restore();
+
+        ctx.lineWidth = 4.5;
+        ctx.strokeStyle = hero.primaryColor;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // الجناح الأمامي
+        ctx.save();
+        ctx.translate(-r * 0.25, 6);
+        ctx.rotate(-flapAngle * 1.15);
+        ctx.fillStyle = '#fef08a';
+        ctx.strokeStyle = '#d97706';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.ellipse(-8, 6, 16, 9.5, -0.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.restore();
+      }
+
+      function drawReadyPrompt() {
+        if (state.mode !== 'READY') return;
+
+        const hero = getHeroById(state.selectedHeroId);
+        const pulse = 1 + Math.sin(state.worldTime * 5.5) * 0.06;
+
+        ctx.save();
+        ctx.translate(viewWidth / 2, viewHeight * 0.66);
+        ctx.scale(pulse, pulse);
+
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.beginPath();
+        ctx.roundRect(-145, -36, 290, 72, 24);
+        ctx.fill();
+
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 3.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '900 20px Cairo, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`انطلق يا ${state.playerName}! 👆`, 0, -6);
+
+        ctx.fillStyle = '#fde047';
+        ctx.font = '700 13px Cairo, sans-serif';
+        ctx.fillText(`المس الشاشة للطيران بالبطل ${hero.name}`, 0, 18);
+
+        ctx.restore();
+      }
+
+      function drawParticlesAndTexts() {
+        particles.forEach(p => {
+          const alpha = Math.max(0, p.life / p.maxLife);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+
+        floatingTexts.forEach(ft => {
+          const alpha = Math.max(0, ft.life / ft.maxLife);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.font = '900 20px Cairo, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = 'rgba(15, 23, 42, 0.85)';
+          ctx.strokeText(ft.text, ft.x, ft.y);
+          ctx.fillStyle = ft.color;
+          ctx.fillText(ft.text, ft.x, ft.y);
+          ctx.restore();
+        });
+      }
+
+      function render() {
+        ctx.save();
+        if (state.shakeTimer > 0) {
+          const sx = (Math.random() - 0.5) * state.shakeIntensity * 2;
+          const sy = (Math.random() - 0.5) * state.shakeIntensity * 2;
+          ctx.translate(sx, sy);
+        }
+
+        drawBackground();
+        pipes.forEach(drawPipe);
+        drawCollectibles();
+        drawGround();
+        drawPlayer();
+        drawParticlesAndTexts();
+        drawReadyPrompt();
+        ctx.restore();
+      }
+
+      function gameLoop(timestamp) {
+        if (!state.lastTime) state.lastTime = timestamp;
+        const rawDt = (timestamp - state.lastTime) / 1000;
+        state.lastTime = timestamp;
+        const dt = Math.min(rawDt, 0.05);
+
+        update(dt);
+        render();
+        requestAnimationFrame(gameLoop);
+      }
+
+      /* ======================================================================
+         11. ربط الأحداث والتفاعل
+         ====================================================================== */
+      function returnToPlayerMenu() {
+        state.mode = 'MENU';
+        prepareRound();
+        renderAllViews();
+        updateSelectedHeroUI();
+
+        gameOverOverlay.classList.add('hidden');
+        gameOverOverlay.classList.remove('flex');
+        liveScoreBox.classList.add('hidden');
+        liveScoreBox.classList.remove('flex');
+        homeBtn.classList.add('hidden');
+        homeBtn.classList.remove('flex');
+        playerOverlay.classList.remove('hidden');
+      }
+
+      canvas.addEventListener('pointerdown', (e) => {
+        if (state.mode === 'READY' || state.mode === 'PLAYING') {
+          e.preventDefault();
+          triggerFlap();
+        }
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'ArrowUp') {
+          if (state.mode === 'READY' || state.mode === 'PLAYING') {
+            e.preventDefault();
+            triggerFlap();
+          }
+        }
+      });
+
+      playerNameInput.addEventListener('input', () => {
+        state.playerName = playerNameInput.value.trim();
+        if (state.playerName) {
+          nameErrorMsg.classList.add('hidden');
+          playerNameInput.classList.remove('border-rose-500', 'bg-rose-50');
+        }
+        updateSelectedHeroUI();
+      });
+
+      playerNameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          validateAndStartGame();
+        }
+      });
+
+      difficultyGroup.addEventListener('click', (e) => {
+        if (state.tournamentSettings.lockedDifficulty !== 'free') return;
+        const btn = e.target.closest('.diff-btn');
+        if (!btn) return;
+        const diff = btn.getAttribute('data-diff');
+        if (DIFFICULTY_SETTINGS[diff]) {
+          state.difficulty = diff;
+          difficultyGroup.querySelectorAll('.diff-btn').forEach(b => {
+            if (b.getAttribute('data-diff') === diff) {
+              b.className = 'diff-btn px-2.5 py-1.5 rounded-xl text-xs font-extrabold transition-all bg-emerald-500 text-white shadow';
+            } else {
+              b.className = 'diff-btn px-2.5 py-1.5 rounded-xl text-xs font-extrabold transition-all text-slate-600 hover:bg-slate-100';
+            }
+          });
+          sound.playFlap();
+        }
+      });
+
+      tabPlayersBtn.addEventListener('click', () => {
+        state.leaderboardTab = 'players';
+        tabPlayersBtn.className = 'py-1.5 px-2 rounded-xl text-xs sm:text-sm font-black bg-sky-600 text-white shadow transition-all';
+        tabHeroesBtn.className = 'py-1.5 px-2 rounded-xl text-xs sm:text-sm font-extrabold text-slate-600 hover:bg-slate-100 transition-all';
+        renderAllViews();
+      });
+
+      tabHeroesBtn.addEventListener('click', () => {
+        state.leaderboardTab = 'heroes';
+        tabHeroesBtn.className = 'py-1.5 px-2 rounded-xl text-xs sm:text-sm font-black bg-sky-600 text-white shadow transition-all';
+        tabPlayersBtn.className = 'py-1.5 px-2 rounded-xl text-xs sm:text-sm font-extrabold text-slate-600 hover:bg-slate-100 transition-all';
+        renderAllViews();
+      });
+
+      startPlayBtn.addEventListener('click', validateAndStartGame);
+      playAgainBtn.addEventListener('click', enterReadyState);
+      changeHeroBtn.addEventListener('click', returnToPlayerMenu);
+      homeBtn.addEventListener('click', returnToPlayerMenu);
+
+      // مشاركة رابط اللاعبين النظيف
+      sharePlayerLinkBtn.addEventListener('click', shareCleanPlayerLink);
+      goShareBtn.addEventListener('click', shareCleanPlayerLink);
+
+      // أحداث قفل المشرف والتحقق من الرقم السري
+      openAdminLockBtn.addEventListener('click', openPinPrompt);
+      verifyPinBtn.addEventListener('click', verifyAdminPin);
+      cancelPinBtn.addEventListener('click', () => {
+        pinModalOverlay.classList.add('hidden');
+        pinModalOverlay.classList.remove('flex');
+      });
+      adminPinInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          verifyAdminPin();
+        }
+      });
+
+      // أحداث لوحة تحكم المشرف
+      switchToPlayerViewBtn.addEventListener('click', closeAdminToPlayerView);
+      lockAdminBtn.addEventListener('click', lockAndExitAdmin);
+
+      adminCopyPlayerUrlBtn.addEventListener('click', () => {
+        copyTextSafely(getCleanPlayerUrl(), 'تم نسخ رابط اللاعبين المحمي! جاهز للإرسال في قروب العائلة 📲');
+      });
+
+      adminCopySecretUrlBtn.addEventListener('click', () => {
+        copyTextSafely(getSecretAdminUrl(), 'تم نسخ رابط المشرف الخاص بك! احفظه لديك 🔑');
+      });
+
+      adminPhotoFileInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file && state.adminUploadingHeroId) {
+          adminUploadCharacterPhoto(state.adminUploadingHeroId, file);
+        }
+      });
+
+      saveAdminSettingsBtn.addEventListener('click', adminSaveSettings);
+
+      resetAllScoresBtn.addEventListener('click', () => {
+        confirmResetModal.classList.remove('hidden');
+        confirmResetModal.classList.add('flex');
+      });
+      confirmResetYesBtn.addEventListener('click', adminResetAllScores);
+      confirmResetNoBtn.addEventListener('click', () => {
+        confirmResetModal.classList.add('hidden');
+        confirmResetModal.classList.remove('flex');
+      });
+
+      muteBtn.addEventListener('click', () => {
+        state.muted = !state.muted;
+        muteIcon.textContent = state.muted ? '🔇' : '🔊';
+        if (!state.muted) sound.playFlap();
+      });
+
+      window.addEventListener('resize', resizeCanvas);
+
+      /* ======================================================================
+         12. بدء التشغيل
+         ====================================================================== */
+      window.onload = function () {
+        // التأكد من بقاء خانة الاسم فارغة تماماً عند فتح الصفحة
+        playerNameInput.value = '';
+        state.playerName = '';
+
+        initDefaultAvatars();
+        resizeCanvas();
+        applyTournamentSettingsToUI();
+        renderAllViews();
+        updateSelectedHeroUI();
+        prepareRound();
+        initFirebaseAndSync();
+
+        // إذا تم فتح الرابط بمعامل ?admin=1 نعرض نافذة إدخال الرقم السري للمشرف مباشرة
+        if (requestedAdminViaUrl) {
+          openPinPrompt();
+        }
+
+        requestAnimationFrame(gameLoop);
+      };
+    })();
+  </script>
+</body>
+</html>
